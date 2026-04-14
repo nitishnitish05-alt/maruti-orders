@@ -643,18 +643,15 @@ async function loadSkus() {
   try {
     skus = [];
     const skuDoc = await getDoc(doc(db, 'config', 'skus'));
-    console.log('SKU doc exists:', skuDoc.exists());
     if(skuDoc.exists()) {
       const list = skuDoc.data().list || [];
-      console.log('SKU list length:', list.length);
-      console.log('First SKU:', JSON.stringify(list[0]));
       skus = list.filter(s => s && typeof s.name === 'string');
-      console.log('Filtered SKUs:', skus.length);
     }
   } catch(e) {
     console.error('loadSkus error', e);
   }
 }
+
 async function loadCustomers() {
   try {
     const snap = await getDocs(collection(db, 'order_customers'));
@@ -964,49 +961,50 @@ async function loadProductionDashboard() {
   container.innerHTML = '<div class="loading">Loading data...</div>';
 
   try {
-    // Get latest demand (from most recent completed demand sheet orders)
-    // We aggregate demand from ALL pending orders (current demand in queue)
+    // Aggregate demand from ALL pending orders using SKU name as key
     const demandMap = {};
     pendingOrders.forEach(order => {
       (order.skus||[]).forEach(s => {
-        if(!demandMap[s.id]) demandMap[s.id] = { name: s.name, unit: s.unit||'', demand: 0 };
-        demandMap[s.id].demand += Number(s.qty)||0;
+        const key = s.name;
+        if(!demandMap[key]) demandMap[key] = { name: s.name, unit: s.unit||'', demand: 0 };
+        demandMap[key].demand += Number(s.qty)||0;
       });
     });
 
-    // Get closing stock from stock ledger
+    // Get closing stock from stock_config opening document
     const closingStockMap = {};
     try {
-      const stockSnap = await getDocs(collection(db, 'stock_ledger'));
-      // Try to find closing stock entries
-      stockSnap.forEach(d => {
-        const data = d.data();
-        if(data.skuId && data.closing !== undefined) {
-          closingStockMap[data.skuId] = { closing: data.closing, unit: data.unit||'' };
-        }
-      });
+      const openingDoc = await getDoc(doc(db, 'stock_config', 'opening'));
+      if(openingDoc.exists()) {
+        const data = openingDoc.data().data || {};
+        Object.entries(data).forEach(([skuId, qty]) => {
+          const sku = skus.find(s => String(s.id) === String(skuId));
+          if(sku) closingStockMap[sku.name] = { closing: Number(qty)||0 };
+        });
+      }
     } catch(e) {
-      // Try alternate: stock from prod_entries / stock_config
+      console.error('stock load error', e);
     }
 
-    // Build from SKU list + demand + closing stock
-    const allSKUIds = new Set([...Object.keys(demandMap), ...skus.map(s=>s.id||s.name)]);
+    // Build rows from demand
     const rows = [];
-    allSKUIds.forEach(id => {
-      const sku = skus.find(s => (s.id||s.name) === id);
-      const demand = demandMap[id]?.demand || 0;
-      const closing = closingStockMap[id]?.closing ?? null;
+    Object.keys(demandMap).forEach(name => {
+      const demand = demandMap[name].demand;
+      const unit = demandMap[name].unit;
+      const closing = closingStockMap[name]?.closing ?? null;
       const shortfall = closing !== null ? demand - closing : null;
-      if(demand > 0 || closing > 0) {
-        rows.push({
-          id, name: demandMap[id]?.name || sku?.name || id,
-          unit: demandMap[id]?.unit || sku?.unit || '',
-          demand, closing, shortfall
-        });
+      rows.push({ name, unit, demand, closing, shortfall });
+    });
+
+    // Add SKUs with closing stock but no demand
+    Object.keys(closingStockMap).forEach(name => {
+      if(!demandMap[name] && closingStockMap[name].closing > 0) {
+        const sku = skus.find(s => s.name === name);
+        rows.push({ name, unit: sku?.unit||'', demand: 0, closing: closingStockMap[name].closing, shortfall: -closingStockMap[name].closing });
       }
     });
 
-    rows.sort((a,b) => {
+        rows.sort((a,b) => {
       if(a.shortfall !== null && b.shortfall !== null) return b.shortfall - a.shortfall;
       return b.demand - a.demand;
     });
@@ -1081,7 +1079,7 @@ skuInput.addEventListener('input', () => {
   if(!q) { skuDropdown.classList.remove('open'); return; }
   const filtered = skus.filter(s => {
     const name = (s.name||'').toLowerCase();
-    const code = (s.code||String(s.id)||'').toLowerCase();
+    const code = (s.code||s.id||'').toLowerCase();
     return name.includes(q) || code.includes(q);
   }).slice(0, 20);
   renderSkuDropdown(filtered);
