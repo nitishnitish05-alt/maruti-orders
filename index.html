@@ -641,15 +641,11 @@ async function loadData() {
 
 async function loadSkus() {
   try {
-    const snap = await getDocs(collection(db, 'stock_config'));
     skus = [];
-    snap.forEach(d => {
-      const data = d.data();
-      if(data.skus) data.skus.forEach(s => skus.push(s));
-    });
-    // If stock_config stores skus as individual docs (alternate structure)
-    if(skus.length === 0) {
-      snap.forEach(d => skus.push({ id: d.id, ...d.data() }));
+    const skuDoc = await getDoc(doc(db, 'config', 'skus'));
+    if(skuDoc.exists()) {
+      const list = skuDoc.data().list || [];
+      skus = list;
     }
   } catch(e) {
     console.error('loadSkus error', e);
