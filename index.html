@@ -645,7 +645,7 @@ async function loadSkus() {
     const skuDoc = await getDoc(doc(db, 'config', 'skus'));
     if(skuDoc.exists()) {
       const list = skuDoc.data().list || [];
-      skus = list;
+      skus = list.filter(s => s && typeof s.name === 'string');
     }
   } catch(e) {
     console.error('loadSkus error', e);
