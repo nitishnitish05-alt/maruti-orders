@@ -643,15 +643,18 @@ async function loadSkus() {
   try {
     skus = [];
     const skuDoc = await getDoc(doc(db, 'config', 'skus'));
+    console.log('SKU doc exists:', skuDoc.exists());
     if(skuDoc.exists()) {
       const list = skuDoc.data().list || [];
+      console.log('SKU list length:', list.length);
+      console.log('First SKU:', JSON.stringify(list[0]));
       skus = list.filter(s => s && typeof s.name === 'string');
+      console.log('Filtered SKUs:', skus.length);
     }
   } catch(e) {
     console.error('loadSkus error', e);
   }
 }
-
 async function loadCustomers() {
   try {
     const snap = await getDocs(collection(db, 'order_customers'));
