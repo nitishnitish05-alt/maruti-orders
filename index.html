@@ -198,6 +198,38 @@ input,select,textarea{font-family:var(--sans);}
 /* LOADING */
 .loading{text-align:center;padding:40px;color:var(--text2);}
 
+
+/* ORDER MODE TOGGLE */
+.mode-toggle{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:3px;gap:2px;margin-bottom:16px;}
+.mode-btn{flex:1;padding:7px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;background:none;color:var(--text2);cursor:pointer;transition:all .15s;}
+.mode-btn.active{background:var(--surface);color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,0.1);}
+
+/* SKU SUMMARY BAR */
+.sku-summary{display:flex;gap:16px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-top:12px;flex-wrap:wrap;}
+.sku-summary-item{font-size:13px;color:var(--text2);}
+.sku-summary-item strong{color:var(--text);font-weight:700;}
+.sku-summary-total{margin-left:auto;font-size:14px;font-weight:700;color:var(--accent);}
+
+/* ESTIMATE RATE COLUMN */
+.rate-input{background:#ffffff;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:14px;width:90px;outline:none;font-family:var(--mono);}
+.rate-input:focus{border-color:var(--accent);}
+.subtotal-cell{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--text);}
+.estimate-total-row{background:rgba(224,123,57,.08);font-weight:700;}
+.estimate-total-row td{padding:12px 16px !important;font-size:15px;}
+
+/* ORDER TOTALS ON CARD */
+.order-totals{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;}
+.order-total-chip{background:rgba(224,123,57,.1);color:var(--accent);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:600;font-family:var(--mono);}
+
+/* PRINT BUTTON ON CARD */
+.print-order-btn{background:none;border:1px solid var(--border);border-radius:var(--radius);padding:5px 10px;font-size:12px;color:var(--text2);cursor:pointer;transition:all .15s;}
+.print-order-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ESTIMATE HEADER */
+.estimate-header{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+.estimate-header h2{font-size:20px;font-weight:700;margin-bottom:4px;}
+.estimate-header p{font-size:13px;opacity:.85;}
+
 /* PRINT STYLES */
 @media print {
   body{background:#fff;color:#000;}
@@ -266,6 +298,11 @@ input,select,textarea{font-family:var(--sans);}
       <div class="page-title">New <span>Order</span></div>
     </div>
     <div class="card">
+      <!-- MODE TOGGLE -->
+      <div class="mode-toggle" id="order-mode-toggle">
+        <button class="mode-btn active" id="mode-btn-order" onclick="setOrderMode('order')">📋 Order</button>
+        <button class="mode-btn" id="mode-btn-estimate" onclick="setOrderMode('estimate')">💰 Estimate</button>
+      </div>
       <div class="form-row cols2">
         <div class="form-group" style="margin-bottom:0">
           <label>Customer <span style="color:var(--red)">*</span></label>
@@ -312,16 +349,18 @@ input,select,textarea{font-family:var(--sans);}
       </div>
       <div id="sku-list-container">
         <table class="sku-table" id="sku-table" style="display:none;">
-          <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Quantity</th><th></th></tr></thead>
+          <thead id="sku-thead"><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Quantity</th><th id="rate-col-header" style="display:none;">Rate (₹)</th><th id="subtotal-col-header" style="display:none;">Subtotal</th><th></th></tr></thead>
           <tbody id="sku-tbody"></tbody>
         </table>
         <div id="sku-empty" class="empty" style="padding:24px;">
           <div class="empty-sub">No SKUs added yet. Search above to add.</div>
         </div>
+        <div id="sku-summary" class="sku-summary" style="display:none;"></div>
       </div>
       <hr class="divider">
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
         <button class="btn btn-secondary" id="clear-order-btn">Clear</button>
+        <button class="btn btn-secondary" id="print-estimate-btn" style="display:none;">🖨 Print Estimate</button>
         <button class="btn btn-primary" id="save-order-btn">💾 Save Order</button>
       </div>
     </div>
@@ -418,6 +457,17 @@ input,select,textarea{font-family:var(--sans);}
         <div id="users-list"></div>
       </div>
     </div>
+    <!-- SKU RATES -->
+    <div class="card" style="margin-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-weight:600;">SKU Rates</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;">Set per-unit rates for estimate generation</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-rates-btn">💾 Save Rates</button>
+      </div>
+      <div id="sku-rates-list"></div>
+    </div>
   </div>
 </div>
 
@@ -470,6 +520,7 @@ input,select,textarea{font-family:var(--sans);}
       <button class="btn btn-secondary" id="modal-order-view-close">Close</button>
       <button class="btn btn-danger btn-sm" id="modal-order-delete" style="margin-right:auto;">Delete Order</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-revert" style="display:none;">Revert to Pending</button>
+      <button class="btn btn-secondary btn-sm" id="modal-order-print">🖨 Print</button>
     </div>
   </div>
 </div>
@@ -504,6 +555,9 @@ let pendingOrders = [];
 let completedOrders = [];
 let selectedOrderIds = new Set();
 let currentDemandOrders = []; // orders staged for demand sheet
+let orderMode = 'order'; // 'order' or 'estimate'
+let skuRates = {}; // SKU name -> rate
+let currentViewingOrder = null;
 let editingCustomerId = null;
 let editingUserId = null;
 let viewingOrderId = null;
@@ -635,7 +689,7 @@ document.getElementById('go-new-order-btn').onclick = () => showPage('page-new-o
 
 // ── LOAD DATA ────────────────────────────────────────────────────────────────
 async function loadData() {
-  await Promise.all([loadSkus(), loadCustomers(), loadUsers()]);
+  await Promise.all([loadSkus(), loadCustomers(), loadUsers(), loadSkuRates()]);
   listenOrders();
 }
 
@@ -713,14 +767,25 @@ function renderPendingOrders() {
     chk.addEventListener('click', e => e.stopPropagation());
     const info = document.createElement('div');
     info.className = 'order-info';
+    const totals = calcOrderTotals(order.skus||[]);
     info.innerHTML = `
       <div class="order-customer">${order.customerName || 'Unknown'}</div>
       <div class="order-meta">${order.date || ''} ${order.remark ? '· '+order.remark : ''}</div>
       <div class="order-skus">${(order.skus||[]).map(s => `<span class="sku-chip">${s.name} <span>×${s.qty}</span> <span style="color:var(--text2)">${s.unit||''}</span></span>`).join('')}</div>
+      <div class="order-totals">
+        ${totals.boxes > 0 ? `<span class="order-total-chip">📦 ${totals.boxes} Box</span>` : ''}
+        ${totals.bags > 0 ? `<span class="order-total-chip">🛍 ${totals.bags} Bag</span>` : ''}
+      </div>
     `;
     const actions = document.createElement('div');
     actions.className = 'order-actions';
     actions.innerHTML = `<span class="status-badge status-pending">Pending</span>`;
+    const printBtn = document.createElement('button');
+    printBtn.className = 'print-order-btn';
+    printBtn.textContent = '🖨';
+    printBtn.title = 'Print Order';
+    printBtn.onclick = e => { e.stopPropagation(); printOrder(order); };
+    actions.appendChild(printBtn);
     const viewBtn = document.createElement('button');
     viewBtn.className = 'btn btn-secondary btn-sm';
     viewBtn.textContent = 'View';
@@ -796,6 +861,10 @@ function openOrderView(order) {
 }
 
 document.getElementById('modal-order-view-close').onclick = () => closeModal('modal-order-view');
+document.getElementById('modal-order-print').onclick = () => {
+  const order = [...pendingOrders, ...completedOrders].find(o => o.id === viewingOrderId);
+  if(order) { closeModal('modal-order-view'); setTimeout(() => printOrder(order), 200); }
+};
 document.getElementById('modal-order-delete').onclick = async () => {
   if(!confirm('Delete this order?')) return;
   await deleteDoc(doc(db, 'order_entries', viewingOrderId));
@@ -1079,7 +1148,7 @@ skuInput.addEventListener('input', () => {
   if(!q) { skuDropdown.classList.remove('open'); return; }
   const filtered = skus.filter(s => {
     const name = (s.name||'').toLowerCase();
-    const code = (s.code||String(s.id||'')).toLowerCase();
+    const code = (s.code||s.id||'').toLowerCase();
     return name.includes(q) || code.includes(q);
   }).slice(0, 20);
   renderSkuDropdown(filtered);
@@ -1168,11 +1237,12 @@ function addSkuRow() {
     existing.qty += qty;
     toast(`Updated qty for ${selectedSkuForAdd.name}`);
   } else {
+    const rate = skuRates[selectedSkuForAdd.name] || 0;
     currentOrderSkus.push({
       id: selectedSkuForAdd.id || selectedSkuForAdd.name,
       name: selectedSkuForAdd.name || selectedSkuForAdd.id,
       unit: selectedSkuForAdd.unit || '',
-      qty
+      qty, rate
     });
   }
   renderSkuTable();
@@ -1182,6 +1252,185 @@ function addSkuRow() {
   skuInput.focus();
 }
 
+// ── CALC ORDER TOTALS ────────────────────────────────────────────────────────
+function calcOrderTotals(skus) {
+  let boxes = 0, bags = 0;
+  skus.forEach(s => {
+    const qty = Number(s.qty)||0;
+    const unit = (s.unit||'').toLowerCase();
+    if(unit === 'box') boxes += qty;
+    else if(unit === 'bag') bags += qty;
+  });
+  return { boxes, bags };
+}
+
+// ── ORDER MODE TOGGLE ─────────────────────────────────────────────────────────
+function setOrderMode(mode) {
+  orderMode = mode;
+  document.getElementById('mode-btn-order').classList.toggle('active', mode==='order');
+  document.getElementById('mode-btn-estimate').classList.toggle('active', mode==='estimate');
+  document.getElementById('print-estimate-btn').style.display = mode==='estimate' ? 'inline-flex' : 'none';
+  document.getElementById('save-order-btn').textContent = mode==='estimate' ? '💾 Save as Order' : '💾 Save Order';
+  const rateHeader = document.getElementById('rate-col-header');
+  const subtotalHeader = document.getElementById('subtotal-col-header');
+  if(rateHeader) rateHeader.style.display = mode==='estimate' ? '' : 'none';
+  if(subtotalHeader) subtotalHeader.style.display = mode==='estimate' ? '' : 'none';
+  renderSkuTable();
+}
+
+// ── SKU SUMMARY BAR ───────────────────────────────────────────────────────────
+function renderSkuSummary() {
+  const summary = document.getElementById('sku-summary');
+  if(!currentOrderSkus.length) { summary.style.display='none'; return; }
+  const totals = calcOrderTotals(currentOrderSkus);
+  let grandTotal = 0;
+  currentOrderSkus.forEach(s => { grandTotal += (Number(s.qty)||0) * (Number(s.rate)||0); });
+  let html = `<span class="sku-summary-item">SKUs: <strong>${currentOrderSkus.length}</strong></span>`;
+  if(totals.boxes > 0) html += `<span class="sku-summary-item">📦 Boxes: <strong>${totals.boxes}</strong></span>`;
+  if(totals.bags > 0) html += `<span class="sku-summary-item">🛍 Bags: <strong>${totals.bags}</strong></span>`;
+  if(orderMode==='estimate' && grandTotal > 0) html += `<span class="sku-summary-total">Total: ₹${grandTotal.toLocaleString('en-IN')}</span>`;
+  summary.innerHTML = html;
+  summary.style.display = 'flex';
+}
+
+// ── LOAD SKU RATES ────────────────────────────────────────────────────────────
+async function loadSkuRates() {
+  try {
+    const ratesDoc = await getDoc(doc(db, 'order_config', 'sku_rates'));
+    if(ratesDoc.exists()) skuRates = ratesDoc.data().rates || {};
+  } catch(e) { console.error('loadSkuRates', e); }
+}
+
+// ── SAVE SKU RATES ────────────────────────────────────────────────────────────
+async function saveSkuRates() {
+  try {
+    await setDoc(doc(db, 'order_config', 'sku_rates'), { rates: skuRates });
+    toast('Rates saved ✓');
+  } catch(e) { toast('Error saving rates: '+e.message, 'error'); }
+}
+
+// ── RENDER SKU RATES IN ADMIN ─────────────────────────────────────────────────
+function renderSkuRatesList() {
+  const el = document.getElementById('sku-rates-list');
+  if(!el) return;
+  if(!skus.length) { el.innerHTML = '<div style="color:var(--text2);font-size:13px;">SKUs not loaded yet.</div>'; return; }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:400px;overflow-y:auto;">
+      ${skus.map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border-radius:6px;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:500;">${s.name}</div>
+            <div style="font-size:11px;color:var(--text2);">${s.unit||''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:12px;color:var(--text2);">₹</span>
+            <input class="rate-input" style="width:80px;" type="number" min="0" step="0.01"
+              value="${skuRates[s.name]||''}" placeholder="0"
+              onchange="skuRates['${s.name.replace(/'/g,"\'")}'] = parseFloat(this.value)||0">
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ── PRINT ORDER ───────────────────────────────────────────────────────────────
+function printOrder(order) {
+  const totals = calcOrderTotals(order.skus||[]);
+  const date = order.date || '';
+  const rows = (order.skus||[]).map((s,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${s.name}</td>
+      <td>${s.unit||''}</td>
+      <td style="font-weight:700;text-align:right;">${s.qty}</td>
+    </tr>
+  `).join('');
+  const totalsRow = `
+    <tr style="background:#f5f5f5;font-weight:700;">
+      <td colspan="3" style="text-align:right;">Total</td>
+      <td style="text-align:right;">${totals.boxes > 0 ? totals.boxes+' Box' : ''}${totals.boxes>0&&totals.bags>0?' + ':''}${totals.bags > 0 ? totals.bags+' Bag' : ''}</td>
+    </tr>
+  `;
+  const html = `<!DOCTYPE html><html><head><style>
+    body{font-family:'DM Sans',sans-serif;color:#000;padding:20px;font-size:14px;}
+    h2{font-size:22px;font-weight:700;margin-bottom:4px;}
+    .meta{font-size:13px;color:#555;margin-bottom:20px;}
+    table{width:100%;border-collapse:collapse;}
+    th{text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #000;background:#f5f5f5;}
+    td{padding:8px 12px;border-bottom:1px solid #eee;}
+    th:last-child,td:last-child{text-align:right;}
+    .company{font-size:11px;color:#888;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;}
+    @page{margin:1.2cm;}
+  </style></head><body>
+    <div class="company">Maruti — Order Sheet</div>
+    <h2>${order.customerName || 'Customer'}</h2>
+    <div class="meta">Date: ${date}${order.remark ? ' &nbsp;·&nbsp; Note: '+order.remark : ''}</div>
+    <table>
+      <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Qty</th></tr></thead>
+      <tbody>${rows}${totalsRow}</tbody>
+    </table>
+  </body></html>`;
+  const frame = document.getElementById('print-frame');
+  frame.contentDocument.open();
+  frame.contentDocument.write(html);
+  frame.contentDocument.close();
+  frame.contentWindow.focus();
+  setTimeout(() => frame.contentWindow.print(), 300);
+}
+
+// ── PRINT ESTIMATE ────────────────────────────────────────────────────────────
+function printEstimate() {
+  if(!selectedCustomer) { toast('Please select a customer first','error'); return; }
+  if(!currentOrderSkus.length) { toast('No SKUs added','error'); return; }
+  let grandTotal = 0;
+  const rows = currentOrderSkus.map((s,i) => {
+    const rate = Number(s.rate)||0;
+    const subtotal = (Number(s.qty)||0) * rate;
+    grandTotal += subtotal;
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${s.name}</td>
+      <td>${s.unit||''}</td>
+      <td style="text-align:right;">${s.qty}</td>
+      <td style="text-align:right;">₹${rate.toLocaleString('en-IN')}</td>
+      <td style="text-align:right;font-weight:600;">₹${subtotal.toLocaleString('en-IN')}</td>
+    </tr>`;
+  }).join('');
+  const date = document.getElementById('order-date').value;
+  const html = `<!DOCTYPE html><html><head><style>
+    body{font-family:'DM Sans',sans-serif;color:#000;padding:20px;font-size:14px;}
+    .header{background:#e07b39;color:#fff;padding:20px;border-radius:8px;margin-bottom:20px;}
+    .header h2{font-size:22px;font-weight:700;margin-bottom:4px;}
+    .header p{font-size:13px;opacity:.85;}
+    table{width:100%;border-collapse:collapse;}
+    th{text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e07b39;}
+    td{padding:8px 12px;border-bottom:1px solid #eee;}
+    th:nth-child(n+4),td:nth-child(n+4){text-align:right;}
+    .total-row td{font-weight:700;font-size:16px;background:#fff8f0;padding:12px;}
+    @page{margin:1.2cm;}
+  </style></head><body>
+    <div class="header">
+      <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:.8;margin-bottom:8px;">Maruti — Estimate</div>
+      <h2>To: ${selectedCustomer.name}</h2>
+      <p>Date: ${date}</p>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Qty</th><th>Rate (₹)</th><th>Amount (₹)</th></tr></thead>
+      <tbody>
+        ${rows}
+        <tr class="total-row"><td colspan="5" style="text-align:right;">Grand Total</td><td>₹${grandTotal.toLocaleString('en-IN')}</td></tr>
+      </tbody>
+    </table>
+  </body></html>`;
+  const frame = document.getElementById('print-frame');
+  frame.contentDocument.open();
+  frame.contentDocument.write(html);
+  frame.contentDocument.close();
+  frame.contentWindow.focus();
+  setTimeout(() => frame.contentWindow.print(), 300);
+}
+
 function renderSkuTable() {
   const tbody = document.getElementById('sku-tbody');
   const table = document.getElementById('sku-table');
@@ -1189,18 +1438,25 @@ function renderSkuTable() {
   if(!currentOrderSkus.length) {
     table.style.display = 'none';
     empty.style.display = 'block';
+    renderSkuSummary();
     return;
   }
   table.style.display = 'table';
   empty.style.display = 'none';
   tbody.innerHTML = '';
   currentOrderSkus.forEach((s, i) => {
+    // auto-fill rate from saved rates if not already set
+    if(s.rate === undefined && skuRates[s.name]) s.rate = skuRates[s.name];
+    const rate = Number(s.rate)||0;
+    const subtotal = (Number(s.qty)||0) * rate;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="color:var(--text2);font-family:var(--mono)">${i+1}</td>
       <td class="sku-name">${s.name}</td>
       <td class="sku-unit">${s.unit}</td>
       <td><input class="qty-input" type="number" value="${s.qty}" min="0" step="any" data-idx="${i}"></td>
+      <td style="display:${orderMode==='estimate'?'':'none'}"><input class="rate-input" type="number" value="${rate||''}" min="0" step="0.01" placeholder="0" data-ridx="${i}"></td>
+      <td class="subtotal-cell" style="display:${orderMode==='estimate'?'':'none'}" data-sidx="${i}">₹${subtotal.toLocaleString('en-IN')}</td>
       <td><button class="remove-btn" data-idx="${i}">×</button></td>
     `;
     tbody.appendChild(tr);
@@ -1209,9 +1465,22 @@ function renderSkuTable() {
     inp.addEventListener('change', () => {
       const idx = parseInt(inp.dataset.idx);
       currentOrderSkus[idx].qty = parseFloat(inp.value)||0;
+      renderSkuSummary();
+      // update subtotal
+      const rate = Number(currentOrderSkus[idx].rate)||0;
+      const st = tbody.querySelector(`[data-sidx="${idx}"]`);
+      if(st) st.textContent = '₹'+((currentOrderSkus[idx].qty*rate).toLocaleString('en-IN'));
     });
-    inp.addEventListener('keydown', e => {
-      if(e.key === 'Enter') skuInput.focus();
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') skuInput.focus(); });
+  });
+  tbody.querySelectorAll('.rate-input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const idx = parseInt(inp.dataset.ridx);
+      currentOrderSkus[idx].rate = parseFloat(inp.value)||0;
+      const qty = Number(currentOrderSkus[idx].qty)||0;
+      const st = tbody.querySelector(`[data-sidx="${idx}"]`);
+      if(st) st.textContent = '₹'+((qty * currentOrderSkus[idx].rate).toLocaleString('en-IN'));
+      renderSkuSummary();
     });
   });
   tbody.querySelectorAll('.remove-btn').forEach(btn => {
@@ -1221,9 +1490,11 @@ function renderSkuTable() {
       renderSkuTable();
     });
   });
+  renderSkuSummary();
 }
 
 document.getElementById('clear-order-btn').onclick = resetOrderForm;
+document.getElementById('print-estimate-btn').onclick = printEstimate;
 
 function resetOrderForm() {
   selectedCustomer = null;
@@ -1275,6 +1546,7 @@ document.addEventListener('keydown', e => {
 function renderAdmin() {
   renderCustomersList();
   renderUsersList();
+  renderSkuRatesList();
 }
 
 function renderCustomersList() {
@@ -1354,6 +1626,7 @@ async function saveCustomer() {
 }
 
 // User CRUD
+document.getElementById('save-rates-btn')?.addEventListener('click', saveSkuRates);
 document.getElementById('add-user-btn').onclick = () => {
   editingUserId = null;
   document.getElementById('modal-user-title').textContent = 'Add User';
@@ -1450,6 +1723,7 @@ document.addEventListener('keydown', e => {
 // match /order_users/{doc} { allow read, write: if true; }
 // match /order_customers/{doc} { allow read, write: if true; }
 // match /order_entries/{doc} { allow read, write: if true; }
+// match /order_config/{doc} { allow read, write: if true; }
 // (tighten as needed)
 </script>
 </body>
