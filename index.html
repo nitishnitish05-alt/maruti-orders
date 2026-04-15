@@ -1265,7 +1265,7 @@ function calcOrderTotals(skus) {
 }
 
 // ── ORDER MODE TOGGLE ─────────────────────────────────────────────────────────
-function setOrderMode(mode) {
+window.setOrderMode = function(mode) {
   orderMode = mode;
   document.getElementById('mode-btn-order').classList.toggle('active', mode==='order');
   document.getElementById('mode-btn-estimate').classList.toggle('active', mode==='estimate');
