@@ -1148,7 +1148,7 @@ skuInput.addEventListener('input', () => {
   if(!q) { skuDropdown.classList.remove('open'); return; }
   const filtered = skus.filter(s => {
     const name = (s.name||'').toLowerCase();
-    const code = (s.code||s.id||'').toLowerCase();
+    const code = (s.code||String(s.id||'')).toLowerCase();
     return name.includes(q) || code.includes(q);
   }).slice(0, 20);
   renderSkuDropdown(filtered);
