@@ -428,8 +428,12 @@ input,select,textarea{font-family:var(--sans);}
       <div class="page-title">Production <span>Dashboard</span></div>
       <button class="btn btn-secondary btn-sm" id="refresh-prod-btn">↻ Refresh</button>
     </div>
+    <div class="tabs">
+      <button class="tab-btn active" id="prod-tab-btn-selected" onclick="switchProdTab('selected')">Selected Orders</button>
+      <button class="tab-btn" id="prod-tab-btn-all" onclick="switchProdTab('all')">All Pending Orders</button>
+    </div>
     <div class="card" style="margin-bottom:16px;">
-      <div style="font-size:13px;color:var(--text2);">Showing current demand vs. closing stock. SKUs with shortfall are highlighted.</div>
+      <div style="font-size:13px;color:var(--text2);" id="prod-tab-desc">Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.</div>
     </div>
     <div id="prod-dashboard-content"></div>
   </div>
@@ -1025,14 +1029,45 @@ document.getElementById('demand-pdf-btn').onclick = async () => {
 };
 
 // ── PRODUCTION DASHBOARD ─────────────────────────────────────────────────────
+let prodTab = 'selected'; // 'selected' or 'all'
+
+function switchProdTab(tab) {
+  prodTab = tab;
+  document.getElementById('prod-tab-btn-selected').classList.toggle('active', tab==='selected');
+  document.getElementById('prod-tab-btn-all').classList.toggle('active', tab==='all');
+  const desc = document.getElementById('prod-tab-desc');
+  if(tab==='selected') {
+    desc.textContent = 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.';
+  } else {
+    desc.textContent = 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';
+  }
+  loadProductionDashboard();
+}
+
 async function loadProductionDashboard() {
   const container = document.getElementById('prod-dashboard-content');
   container.innerHTML = '<div class="loading">Loading data...</div>';
 
   try {
-    // Aggregate demand from ALL pending orders using SKU name as key
+    // Decide which orders to use based on active tab
+    let ordersToUse = [];
+    if(prodTab === 'selected') {
+      ordersToUse = pendingOrders.filter(o => selectedOrderIds.has(o.id));
+      if(!ordersToUse.length) {
+        container.innerHTML = `<div class="empty"><div class="empty-icon">☑️</div><div class="empty-text">No orders selected</div><div class="empty-sub">Go to Orders Pool and select orders to see their production targets.</div></div>`;
+        return;
+      }
+    } else {
+      ordersToUse = pendingOrders;
+      if(!ordersToUse.length) {
+        container.innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><div class="empty-text">No pending orders</div><div class="empty-sub">No pending orders in the pool yet.</div></div>`;
+        return;
+      }
+    }
+
+    // Aggregate demand using SKU name as key
     const demandMap = {};
-    pendingOrders.forEach(order => {
+    ordersToUse.forEach(order => {
       (order.skus||[]).forEach(s => {
         const key = s.name;
         if(!demandMap[key]) demandMap[key] = { name: s.name, unit: s.unit||'', demand: 0 };
@@ -1055,38 +1090,31 @@ async function loadProductionDashboard() {
       console.error('stock load error', e);
     }
 
+    const hasStock = Object.keys(closingStockMap).length > 0;
+
     // Build rows from demand
     const rows = [];
     Object.keys(demandMap).forEach(name => {
       const demand = demandMap[name].demand;
       const unit = demandMap[name].unit;
-      const closing = closingStockMap[name]?.closing ?? null;
+      const closing = hasStock ? (closingStockMap[name]?.closing ?? 0) : null;
       const shortfall = closing !== null ? demand - closing : null;
       rows.push({ name, unit, demand, closing, shortfall });
     });
 
-    // Add SKUs with closing stock but no demand
-    Object.keys(closingStockMap).forEach(name => {
-      if(!demandMap[name] && closingStockMap[name].closing > 0) {
-        const sku = skus.find(s => s.name === name);
-        rows.push({ name, unit: sku?.unit||'', demand: 0, closing: closingStockMap[name].closing, shortfall: -closingStockMap[name].closing });
-      }
-    });
-
-        rows.sort((a,b) => {
+    // Sort: shortfall descending (most urgent first), then by demand
+    rows.sort((a,b) => {
       if(a.shortfall !== null && b.shortfall !== null) return b.shortfall - a.shortfall;
       return b.demand - a.demand;
     });
 
-    if(!rows.length) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><div class="empty-text">No demand data yet</div><div class="empty-sub">Select and generate a demand sheet from pending orders first.</div></div>`;
-      return;
-    }
+    const orderCount = ordersToUse.length;
+    const orderNames = ordersToUse.map(o=>o.customerName).join(', ');
 
-    const hasStock = rows.some(r => r.closing !== null);
-
-    // Table view
     container.innerHTML = `
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+        ${orderCount} order${orderCount!==1?'s':''} — ${orderNames}
+      </div>
       <div class="card">
         <table class="demand-table">
           <thead>
@@ -1094,28 +1122,30 @@ async function loadProductionDashboard() {
               <th>#</th>
               <th>SKU Name</th>
               <th>Unit</th>
-              <th>Current Demand</th>
-              ${hasStock ? '<th>Closing Stock</th><th>Shortfall</th>' : ''}
+              <th>Demand</th>
+              <th>Opening Stock</th>
+              <th>To Produce</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map((r,i) => `
-              <tr>
+            ${rows.map((r,i) => {
+              const needsProd = r.shortfall !== null && r.shortfall > 0;
+              const isOk = r.shortfall !== null && r.shortfall <= 0;
+              return `
+              <tr style="${needsProd ? 'background:rgba(214,48,49,0.04);' : ''}">
                 <td style="color:var(--text2);font-family:var(--mono)">${i+1}</td>
                 <td style="font-weight:500;">${r.name}</td>
                 <td style="font-family:var(--mono);font-size:12px;color:var(--text2);">${r.unit}</td>
                 <td class="qty">${r.demand}</td>
-                ${hasStock ? `
-                  <td class="${r.closing===null?'ok':'qty'}">${r.closing===null ? '—' : r.closing}</td>
-                  <td class="${r.shortfall===null?'ok':r.shortfall>0?'shortfall':'surplus'}">
-                    ${r.shortfall===null ? '—' : (r.shortfall>0 ? '▲ '+r.shortfall : (r.shortfall<0 ? '✓ '+Math.abs(r.shortfall)+' surplus' : '✓ OK'))}
-                  </td>
-                ` : ''}
-              </tr>
-            `).join('')}
+                <td class="qty" style="color:var(--text2);">${r.closing === null ? '—' : r.closing}</td>
+                <td class="${r.shortfall===null?'ok':needsProd?'shortfall':'surplus'}" style="font-weight:700;">
+                  ${r.shortfall===null ? '—' : (needsProd ? '▲ '+r.shortfall : '✓ OK'+(Math.abs(r.shortfall)>0?' ('+Math.abs(r.shortfall)+' surplus)':''))}
+                </td>
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
-        ${!hasStock ? `<div style="margin-top:12px;font-size:12px;color:var(--text2);">⚠ Closing stock data not found in stock_ledger collection. Connect the stock module to see shortfall analysis.</div>` : ''}
+        ${!hasStock ? `<div style="margin-top:12px;font-size:12px;color:var(--text2);">⚠ Opening stock not set yet. Set opening stock in the Truck Loading app to see shortfall analysis.</div>` : ''}
       </div>
     `;
   } catch(e) {
@@ -1148,7 +1178,7 @@ skuInput.addEventListener('input', () => {
   if(!q) { skuDropdown.classList.remove('open'); return; }
   const filtered = skus.filter(s => {
     const name = (s.name||'').toLowerCase();
-    const code = (s.code||String(s.id||'')).toLowerCase();
+    const code = (s.code||s.id||'').toLowerCase();
     return name.includes(q) || code.includes(q);
   }).slice(0, 20);
   renderSkuDropdown(filtered);
@@ -1265,7 +1295,7 @@ function calcOrderTotals(skus) {
 }
 
 // ── ORDER MODE TOGGLE ─────────────────────────────────────────────────────────
-window.setOrderMode = function(mode) {
+function setOrderMode(mode) {
   orderMode = mode;
   document.getElementById('mode-btn-order').classList.toggle('active', mode==='order');
   document.getElementById('mode-btn-estimate').classList.toggle('active', mode==='estimate');
