@@ -300,8 +300,8 @@ input,select,textarea{font-family:var(--sans);}
     <div class="card">
       <!-- MODE TOGGLE -->
       <div class="mode-toggle" id="order-mode-toggle">
-        <button class="mode-btn active" id="mode-btn-order" onclick="setOrderMode('order')">📋 Order</button>
-        <button class="mode-btn" id="mode-btn-estimate" onclick="setOrderMode('estimate')">💰 Estimate</button>
+        <button class="mode-btn active" id="mode-btn-order" onclick="window.setOrderMode('order')">📋 Order</button>
+        <button class="mode-btn" id="mode-btn-estimate" onclick="window.setOrderMode('estimate')">💰 Estimate</button>
       </div>
       <div class="form-row cols2">
         <div class="form-group" style="margin-bottom:0">
@@ -429,8 +429,8 @@ input,select,textarea{font-family:var(--sans);}
       <button class="btn btn-secondary btn-sm" id="refresh-prod-btn">↻ Refresh</button>
     </div>
     <div class="tabs">
-      <button class="tab-btn active" id="prod-tab-btn-selected" onclick="window.switchProdTab('selected')">Selected Orders</button>
-      <button class="tab-btn" id="prod-tab-btn-all" onclick="window.switchProdTab('all')">All Pending Orders</button>
+      <button class="tab-btn active" id="prod-tab-btn-selected" onclick="switchProdTab('selected')">Selected Orders</button>
+      <button class="tab-btn" id="prod-tab-btn-all" onclick="switchProdTab('all')">All Pending Orders</button>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:13px;color:var(--text2);" id="prod-tab-desc">Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.</div>
@@ -1033,6 +1033,7 @@ let prodTab = 'selected'; // 'selected' or 'all'
 
 function switchProdTab(tab) {
   prodTab = tab;
+  window.prodTab = tab;
   document.getElementById('prod-tab-btn-selected').classList.toggle('active', tab==='selected');
   document.getElementById('prod-tab-btn-all').classList.toggle('active', tab==='all');
   const desc = document.getElementById('prod-tab-desc');
@@ -1043,7 +1044,8 @@ function switchProdTab(tab) {
   }
   loadProductionDashboard();
 }
-window.switchProdTab = function(tab) {   prodTab = tab;   document.getElementById('prod-tab-btn-selected').classList.toggle('active', tab==='selected');   document.getElementById('prod-tab-btn-all').classList.toggle('active', tab==='all');   const desc = document.getElementById('prod-tab-desc');   if(desc) desc.textContent = tab==='selected' ? 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.' : 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';   loadProductionDashboard(); };
+window.switchProdTab = switchProdTab;
+
 async function loadProductionDashboard() {
   const container = document.getElementById('prod-dashboard-content');
   container.innerHTML = '<div class="loading">Loading data...</div>';
@@ -1051,13 +1053,14 @@ async function loadProductionDashboard() {
   try {
     // Decide which orders to use based on active tab
     let ordersToUse = [];
-    if(prodTab === 'selected') {
+    const currentTab = window.prodTab || prodTab;
+    if(currentTab === 'selected') {
       ordersToUse = pendingOrders.filter(o => selectedOrderIds.has(o.id));
       if(!ordersToUse.length) {
         container.innerHTML = `<div class="empty"><div class="empty-icon">☑️</div><div class="empty-text">No orders selected</div><div class="empty-sub">Go to Orders Pool and select orders to see their production targets.</div></div>`;
         return;
       }
-    } else {
+    } else if(currentTab === 'all') {
       ordersToUse = pendingOrders;
       if(!ordersToUse.length) {
         container.innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><div class="empty-text">No pending orders</div><div class="empty-sub">No pending orders in the pool yet.</div></div>`;
@@ -1295,7 +1298,7 @@ function calcOrderTotals(skus) {
 }
 
 // ── ORDER MODE TOGGLE ─────────────────────────────────────────────────────────
-function setOrderMode(mode) {
+window.setOrderMode = function setOrderMode(mode) {
   orderMode = mode;
   document.getElementById('mode-btn-order').classList.toggle('active', mode==='order');
   document.getElementById('mode-btn-estimate').classList.toggle('active', mode==='estimate');
