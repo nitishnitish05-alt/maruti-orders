@@ -912,7 +912,7 @@ document.getElementById('generate-demand-btn').onclick = () => {
 };
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
+document.querySelectorAll('.tab-btn:not(#prod-tab-btn-selected):not(#prod-tab-btn-all)').forEach(btn => {
   btn.onclick = () => {
     const tab = btn.dataset.tab;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
