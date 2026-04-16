@@ -429,8 +429,8 @@ input,select,textarea{font-family:var(--sans);}
       <button class="btn btn-secondary btn-sm" id="refresh-prod-btn">↻ Refresh</button>
     </div>
     <div class="tabs">
-      <button class="tab-btn active" id="prod-tab-btn-selected" onclick="switchProdTab('selected')">Selected Orders</button>
-      <button class="tab-btn" id="prod-tab-btn-all" onclick="switchProdTab('all')">All Pending Orders</button>
+      <button class="tab-btn active" id="prod-tab-btn-selected" onclick="window.switchProdTab('selected')">Selected Orders</button>
+      <button class="tab-btn" id="prod-tab-btn-all" onclick="window.switchProdTab('all')">All Pending Orders</button>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:13px;color:var(--text2);" id="prod-tab-desc">Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.</div>
