@@ -1043,7 +1043,7 @@ function switchProdTab(tab) {
   }
   loadProductionDashboard();
 }
-window.switchProdTab = switchProdTab;
+window.switchProdTab = function(tab) {   prodTab = tab;   document.getElementById('prod-tab-btn-selected').classList.toggle('active', tab==='selected');   document.getElementById('prod-tab-btn-all').classList.toggle('active', tab==='all');   const desc = document.getElementById('prod-tab-desc');   if(desc) desc.textContent = tab==='selected' ? 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.' : 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';   loadProductionDashboard(); };
 async function loadProductionDashboard() {
   const container = document.getElementById('prod-dashboard-content');
   container.innerHTML = '<div class="loading">Loading data...</div>';
