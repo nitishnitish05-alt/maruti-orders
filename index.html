@@ -432,8 +432,20 @@ input,select,textarea{font-family:var(--sans);}
       <button class="tab-btn active" id="prod-tab-btn-selected" onclick="window.switchProdTab('selected')">Selected Orders</button>
       <button class="tab-btn" id="prod-tab-btn-all" onclick="window.switchProdTab('all')">All Pending Orders</button>
     </div>
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
       <div style="font-size:13px;color:var(--text2);" id="prod-tab-desc">Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select class="filter-input" id="prod-sort" onchange="refreshProdDashboard()" style="font-size:12px;padding:6px 10px;">
+          <option value="demand_desc">Highest Demand First</option>
+          <option value="demand_asc">Lowest Demand First</option>
+          <option value="alpha">A → Z</option>
+          <option value="alpha_desc">Z → A</option>
+        </select>
+        <select class="filter-input" id="prod-group" onchange="refreshProdDashboard()" style="font-size:12px;padding:6px 10px;">
+          <option value="none">No Grouping</option>
+          <option value="unit">Group by Type (Box/Bag)</option>
+        </select>
+      </div>
     </div>
     <div id="prod-dashboard-content"></div>
   </div>
@@ -1114,47 +1126,102 @@ async function loadProductionDashboard() {
     const orderCount = ordersToUse.length;
     const orderNames = ordersToUse.map(o=>o.customerName).join(', ');
 
-    container.innerHTML = `
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
-        ${orderCount} order${orderCount!==1?'s':''} — ${orderNames}
-      </div>
-      <div class="card">
-        <table class="demand-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>SKU Name</th>
-              <th>Unit</th>
-              <th>Demand</th>
-              <th>Opening Stock</th>
-              <th>To Produce</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((r,i) => {
-              const needsProd = r.shortfall !== null && r.shortfall > 0;
-              const isOk = r.shortfall !== null && r.shortfall <= 0;
-              return `
-              <tr style="${needsProd ? 'background:rgba(214,48,49,0.04);' : ''}">
-                <td style="color:var(--text2);font-family:var(--mono)">${i+1}</td>
-                <td style="font-weight:500;">${r.name}</td>
-                <td style="font-family:var(--mono);font-size:12px;color:var(--text2);">${r.unit}</td>
-                <td class="qty">${r.demand}</td>
-                <td class="qty" style="color:var(--text2);">${r.closing === null ? '—' : r.closing}</td>
-                <td class="${r.shortfall===null?'ok':needsProd?'shortfall':'surplus'}" style="font-weight:700;">
-                  ${r.shortfall===null ? '—' : (needsProd ? '▲ '+r.shortfall : '✓ OK'+(Math.abs(r.shortfall)>0?' ('+Math.abs(r.shortfall)+' surplus)':''))}
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-        ${!hasStock ? `<div style="margin-top:12px;font-size:12px;color:var(--text2);">⚠ Opening stock not set yet. Set opening stock in the Truck Loading app to see shortfall analysis.</div>` : ''}
-      </div>
-    `;
+    // Store rows for re-sorting
+    window._prodRows = rows;
+    window._prodHasStock = hasStock;
+    window._prodOrderInfo = `${orderCount} order${orderCount!==1?'s':''} — ${orderNames}`;
+    renderProdTable();
   } catch(e) {
     container.innerHTML = `<div class="empty"><div class="empty-text">Error loading data</div><div class="empty-sub">${e.message}</div></div>`;
   }
 }
+
+function sortRows(rows) {
+  const sort = document.getElementById('prod-sort')?.value || 'demand_desc';
+  const sorted = [...rows];
+  if(sort === 'demand_desc') sorted.sort((a,b) => b.demand - a.demand);
+  else if(sort === 'demand_asc') sorted.sort((a,b) => a.demand - b.demand);
+  else if(sort === 'alpha') sorted.sort((a,b) => a.name.localeCompare(b.name));
+  else if(sort === 'alpha_desc') sorted.sort((a,b) => b.name.localeCompare(a.name));
+  return sorted;
+}
+
+function renderProdTable() {
+  const container = document.getElementById('prod-dashboard-content');
+  const rows = window._prodRows || [];
+  const hasStock = window._prodHasStock || false;
+  const orderInfo = window._prodOrderInfo || '';
+  if(!rows.length) return;
+
+  const group = document.getElementById('prod-group')?.value || 'none';
+  let sorted = sortRows(rows);
+
+  // Calculate totals
+  let totalBoxDemand = 0, totalBagDemand = 0, totalBoxProd = 0, totalBagProd = 0;
+  rows.forEach(r => {
+    const unit = (r.unit||'').toLowerCase();
+    if(unit === 'box') { totalBoxDemand += r.demand; if(r.shortfall>0) totalBoxProd += r.shortfall; }
+    else if(unit === 'bag') { totalBagDemand += r.demand; if(r.shortfall>0) totalBagProd += r.shortfall; }
+  });
+
+  function renderRows(rowList, startIdx=0) {
+    return rowList.map((r,i) => {
+      const needsProd = r.shortfall !== null && r.shortfall > 0;
+      return `<tr style="${needsProd ? 'background:rgba(214,48,49,0.04);' : ''}">
+        <td style="color:var(--text2);font-family:var(--mono)">${startIdx+i+1}</td>
+        <td style="font-weight:500;">${r.name}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text2);">${r.unit}</td>
+        <td class="qty">${r.demand}</td>
+        <td class="qty" style="color:var(--text2);">${r.closing===null?'—':r.closing}</td>
+        <td class="${r.shortfall===null?'ok':needsProd?'shortfall':'surplus'}" style="font-weight:700;">
+          ${r.shortfall===null?'—':(needsProd?'▲ '+r.shortfall:'✓ OK'+(Math.abs(r.shortfall)>0?' ('+Math.abs(r.shortfall)+' surplus)':''))}
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  let tableBody = '';
+  if(group === 'unit') {
+    const boxes = sorted.filter(r => (r.unit||'').toLowerCase() === 'box');
+    const bags = sorted.filter(r => (r.unit||'').toLowerCase() === 'bag');
+    const others = sorted.filter(r => !['box','bag'].includes((r.unit||'').toLowerCase()));
+    if(boxes.length) tableBody += `<tr><td colspan="6" style="background:var(--surface2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 16px;color:var(--text2);">📦 Box (${boxes.length} SKUs)</td></tr>${renderRows(boxes)}`;
+    if(bags.length) tableBody += `<tr><td colspan="6" style="background:var(--surface2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 16px;color:var(--text2);">🛍 Bag (${bags.length} SKUs)</td></tr>${renderRows(bags, boxes.length)}`;
+    if(others.length) tableBody += `<tr><td colspan="6" style="background:var(--surface2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 16px;color:var(--text2);">Other</td></tr>${renderRows(others, boxes.length+bags.length)}`;
+  } else {
+    tableBody = renderRows(sorted);
+  }
+
+  // Totals row
+  const totalsRow = `
+    <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border);">
+      <td colspan="2" style="padding:10px 16px;font-size:13px;">TOTAL</td>
+      <td></td>
+      <td class="qty" style="font-size:15px;">
+        ${totalBoxDemand>0?`<div>📦 ${totalBoxDemand} Box</div>`:''}
+        ${totalBagDemand>0?`<div>🛍 ${totalBagDemand} Bag</div>`:''}
+      </td>
+      <td></td>
+      <td class="shortfall" style="font-size:13px;">
+        ${hasStock?(totalBoxProd>0?`<div>▲ ${totalBoxProd} Box</div>`:'')+(totalBagProd>0?`<div>▲ ${totalBagProd} Bag</div>`:''):'—'}
+      </td>
+    </tr>`;
+
+  container.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">${orderInfo}</div>
+    <div class="card">
+      <table class="demand-table">
+        <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Demand</th><th>Opening Stock</th><th>To Produce</th></tr></thead>
+        <tbody>${tableBody}${totalsRow}</tbody>
+      </table>
+      ${!hasStock ? '<div style="margin-top:12px;font-size:12px;color:var(--text2);">⚠ Opening stock not set yet. Set opening stock in the Truck Loading app to see shortfall analysis.</div>' : ''}
+    </div>`;
+}
+
+function refreshProdDashboard() {
+  if(window._prodRows) renderProdTable();
+}
+window.refreshProdDashboard = refreshProdDashboard;
 
 document.getElementById('refresh-prod-btn').onclick = loadProductionDashboard;
 
