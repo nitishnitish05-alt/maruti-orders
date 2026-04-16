@@ -1031,20 +1031,20 @@ document.getElementById('demand-pdf-btn').onclick = async () => {
 // ── PRODUCTION DASHBOARD ─────────────────────────────────────────────────────
 let prodTab = 'selected'; // 'selected' or 'all'
 
-function switchProdTab(tab) {
+function switchProdTab(tab) { window.switchProdTab(tab); }
+window.switchProdTab = function(tab) {
   prodTab = tab;
   window.prodTab = tab;
-  document.getElementById('prod-tab-btn-selected').classList.toggle('active', tab==='selected');
-  document.getElementById('prod-tab-btn-all').classList.toggle('active', tab==='all');
+  const btnSel = document.getElementById('prod-tab-btn-selected');
+  const btnAll = document.getElementById('prod-tab-btn-all');
   const desc = document.getElementById('prod-tab-desc');
-  if(tab==='selected') {
-    desc.textContent = 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.';
-  } else {
-    desc.textContent = 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';
-  }
+  if(btnSel) btnSel.classList.toggle('active', tab==='selected');
+  if(btnAll) btnAll.classList.toggle('active', tab==='all');
+  if(desc) desc.textContent = tab==='selected'
+    ? 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.'
+    : 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';
   loadProductionDashboard();
-}
-window.switchProdTab = function(tab) {   const btnSelected = document.getElementById('prod-tab-btn-selected');   const btnAll = document.getElementById('prod-tab-btn-all');   const desc = document.getElementById('prod-tab-desc');   prodTab = tab;   window.prodTab = tab;   if(btnSelected) btnSelected.classList.toggle('active', tab==='selected');   if(btnAll) btnAll.classList.toggle('active', tab==='all');   if(desc) desc.textContent = tab==='selected' ? 'Showing demand from currently selected orders vs. opening stock. Shortfall = quantity to be produced.' : 'Showing demand from ALL pending orders vs. opening stock. Shortfall = quantity to be produced.';   loadProductionDashboard(); };
+};
 
 async function loadProductionDashboard() {
   const container = document.getElementById('prod-dashboard-content');
