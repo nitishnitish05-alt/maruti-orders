@@ -1043,7 +1043,7 @@ function switchProdTab(tab) {
   }
   loadProductionDashboard();
 }
-
+window.switchProdTab = switchProdTab;
 async function loadProductionDashboard() {
   const container = document.getElementById('prod-dashboard-content');
   container.innerHTML = '<div class="loading">Loading data...</div>';
