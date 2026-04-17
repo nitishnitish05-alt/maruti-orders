@@ -455,14 +455,18 @@ input,select,textarea{font-family:var(--sans);}
     <div class="page-header">
       <div class="page-title">Admin <span>Panel</span></div>
     </div>
+    <div id="admin-customers-section">
     <div class="admin-grid">
       <!-- CUSTOMERS -->
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div style="font-weight:600;">Customers</div>
-          <button class="btn btn-primary btn-sm" id="add-customer-btn">+ Add</button>
+          <div style="font-weight:600;">Customers <span id="customers-count" style="font-size:12px;color:var(--text2);font-weight:400;"></span></div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="filter-input" id="customer-search-admin" placeholder="Search..." style="font-size:12px;padding:6px 10px;width:140px;">
+            <button class="btn btn-primary btn-sm" id="add-customer-btn">+ Add</button>
+          </div>
         </div>
-        <div id="customers-list"></div>
+        <div id="customers-list" style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
       </div>
       <!-- USERS -->
       <div class="card">
@@ -470,7 +474,7 @@ input,select,textarea{font-family:var(--sans);}
           <div style="font-weight:600;">Users</div>
           <button class="btn btn-primary btn-sm" id="add-user-btn">+ Add</button>
         </div>
-        <div id="users-list"></div>
+        <div id="users-list" style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
       </div>
     </div>
     <!-- SKU RATES -->
@@ -722,8 +726,8 @@ function buildNav() {
   if(role === 'production_supervisor' || role === 'admin') {
     pages.push({ id:'page-production', label:'Production' });
   }
-  if(role === 'admin') {
-    pages.push({ id:'page-admin', label:'Admin' });
+  if(role === 'admin' || role === 'order_staff') {
+    pages.push({ id:'page-admin', label:'Customers' });
   }
   pages.forEach(p => {
     const btn = document.createElement('button');
@@ -1918,19 +1922,25 @@ document.getElementById('modal-edit-save').onclick = async () => {
 // ── ADMIN ────────────────────────────────────────────────────────────────────
 function renderAdmin() {
   renderCustomersList();
-  renderUsersList();
-  renderSkuRatesList();
+  if(CU.role === 'admin') renderUsersList();
+  if(CU.role === 'admin') renderSkuRatesList();
 }
 
 function renderCustomersList() {
   const el = document.getElementById('customers-list');
-  if(!customers.length) { el.innerHTML = '<div class="empty" style="padding:20px;"><div class="empty-sub">No customers yet.</div></div>'; return; }
-  el.innerHTML = customers.map(c => `
+  const searchEl = document.getElementById('customer-search-admin');
+  const countEl = document.getElementById('customers-count');
+  const q = searchEl ? searchEl.value.toLowerCase() : '';
+  const filtered = q ? customers.filter(c => c.name.toLowerCase().includes(q)) : customers;
+  if(countEl) countEl.textContent = `(${customers.length})`;
+  if(!filtered.length) { el.innerHTML = '<div class="empty" style="padding:20px;"><div class="empty-sub">No customers found.</div></div>'; return; }
+  const canDelete = CU.role === 'admin';
+  el.innerHTML = filtered.map(c => `
     <div class="list-item">
       <div><div class="list-item-name">${c.name}</div></div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-secondary btn-sm" onclick="window._editCustomer('${c.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="window._deleteCustomer('${c.id}')">Del</button>
+        ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="window._deleteCustomer('${c.id}')">Del</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -2000,6 +2010,7 @@ async function saveCustomer() {
 
 // User CRUD
 document.getElementById('save-rates-btn')?.addEventListener('click', saveSkuRates);
+document.getElementById('customer-search-admin')?.addEventListener('input', renderCustomersList);
 document.getElementById('add-user-btn').onclick = () => {
   editingUserId = null;
   document.getElementById('modal-user-title').textContent = 'Add User';
