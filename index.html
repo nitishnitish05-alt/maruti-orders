@@ -469,6 +469,7 @@ input,select,textarea{font-family:var(--sans);}
         <div id="customers-list" style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
       </div>
       <!-- USERS -->
+      <div id="admin-users-section">
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div style="font-weight:600;">Users</div>
@@ -476,8 +477,10 @@ input,select,textarea{font-family:var(--sans);}
         </div>
         <div id="users-list" style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
       </div>
+      </div>
     </div>
     <!-- SKU RATES -->
+    <div id="admin-rates-section">
     <div class="card" style="margin-top:20px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
@@ -487,6 +490,7 @@ input,select,textarea{font-family:var(--sans);}
         <button class="btn btn-primary btn-sm" id="save-rates-btn">💾 Save Rates</button>
       </div>
       <div id="sku-rates-list"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -1922,8 +1926,15 @@ document.getElementById('modal-edit-save').onclick = async () => {
 // ── ADMIN ────────────────────────────────────────────────────────────────────
 function renderAdmin() {
   renderCustomersList();
-  if(CU.role === 'admin') renderUsersList();
-  if(CU.role === 'admin') renderSkuRatesList();
+  if(CU.role === 'admin') {
+    renderUsersList();
+    renderSkuRatesList();
+    document.getElementById('admin-users-section').style.display = '';
+    document.getElementById('admin-rates-section').style.display = '';
+  } else {
+    document.getElementById('admin-users-section').style.display = 'none';
+    document.getElementById('admin-rates-section').style.display = 'none';
+  }
 }
 
 function renderCustomersList() {
@@ -1935,11 +1946,12 @@ function renderCustomersList() {
   if(countEl) countEl.textContent = `(${customers.length})`;
   if(!filtered.length) { el.innerHTML = '<div class="empty" style="padding:20px;"><div class="empty-sub">No customers found.</div></div>'; return; }
   const canDelete = CU.role === 'admin';
+  const canEdit = CU.role === 'admin';
   el.innerHTML = filtered.map(c => `
     <div class="list-item">
       <div><div class="list-item-name">${c.name}</div></div>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-secondary btn-sm" onclick="window._editCustomer('${c.id}')">Edit</button>
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="window._editCustomer('${c.id}')">Edit</button>` : ''}
         ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="window._deleteCustomer('${c.id}')">Del</button>` : ''}
       </div>
     </div>
