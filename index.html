@@ -176,7 +176,7 @@ input,select,textarea{font-family:var(--sans);}
 .filter-input:focus{border-color:var(--accent);}
 
 /* MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;overflow-y:auto;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;}
 .modal-overlay.open{display:flex;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:460px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:18px;font-weight:700;margin-bottom:20px;}
@@ -537,7 +537,7 @@ input,select,textarea{font-family:var(--sans);}
       <button class="btn btn-danger btn-sm" id="modal-order-delete" style="margin-right:auto;display:none;">Delete Order</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-revert" style="display:none;">Revert to Pending</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-complete" style="display:none;">✓ Mark Complete</button>
-      <button class="btn btn-secondary btn-sm" id="modal-order-edit">✏ Edit</button>
+      <button class="btn btn-secondary btn-sm" id="btn-order-edit">✏ Edit</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-print">🖨 Print</button>
     </div>
   </div>
@@ -923,7 +923,7 @@ function openOrderView(order) {
   document.getElementById('modal-order-revert').style.display = (isCompleted && isAdmin) ? 'inline-flex' : 'none';
   document.getElementById('modal-order-delete').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('modal-order-complete').style.display = (!isCompleted && isAdmin) ? 'inline-flex' : 'none';
-  document.getElementById('modal-order-edit').style.display = canEdit ? 'inline-flex' : 'none';
+  document.getElementById('btn-order-edit').style.display = canEdit ? 'inline-flex' : 'none';
   openModal('modal-order-view');
 }
 
@@ -949,13 +949,12 @@ document.getElementById('modal-order-complete').onclick = async () => {
   closeModal('modal-order-view');
   toast('Order marked as completed ✓');
 };
-document.getElementById('modal-order-edit').onclick = () => {
+document.getElementById('btn-order-edit').onclick = () => {
   const order = [...pendingOrders, ...completedOrders].find(o => o.id === viewingOrderId);
-  if(!order) { toast('Order not found','error'); return; }
-  closeModal('modal-order-view');
-  setTimeout(() => {
-    openOrderEdit(order);
-  }, 250);
+  if(!order) { toast('Order not found - id: '+viewingOrderId,'error'); return; }
+  const orderCopy = JSON.parse(JSON.stringify(order));
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  setTimeout(() => openOrderEdit(orderCopy), 300);
 };
 
 // ── SELECTION ────────────────────────────────────────────────────────────────
@@ -2015,17 +2014,8 @@ function setupAutocomplete({ input, dropdown, getItems, renderItem, onSelect, ge
 }
 
 // ── MODAL HELPERS ─────────────────────────────────────────────────────────────
-function openModal(id) { 
-  document.getElementById(id).classList.add('open'); 
-  document.body.style.overflow = 'hidden';
-}
-function closeModal(id) { 
-  document.getElementById(id).classList.remove('open'); 
-  // Only restore scroll if no other modals are open
-  if(!document.querySelector('.modal-overlay.open')) {
-    document.body.style.overflow = '';
-  }
-}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(m => {
   m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); });
 });
