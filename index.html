@@ -534,9 +534,57 @@ input,select,textarea{font-family:var(--sans);}
     <div id="order-view-content"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="modal-order-view-close">Close</button>
-      <button class="btn btn-danger btn-sm" id="modal-order-delete" style="margin-right:auto;">Delete Order</button>
+      <button class="btn btn-danger btn-sm" id="modal-order-delete" style="margin-right:auto;display:none;">Delete Order</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-revert" style="display:none;">Revert to Pending</button>
+      <button class="btn btn-secondary btn-sm" id="modal-order-complete" style="display:none;">✓ Mark Complete</button>
+      <button class="btn btn-secondary btn-sm" id="modal-order-edit">✏ Edit</button>
       <button class="btn btn-secondary btn-sm" id="modal-order-print">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-order-edit">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-title">Edit Order</div>
+    <div class="form-row cols2" style="margin-bottom:16px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Customer</label>
+        <div class="ac-wrap">
+          <input class="ac-input" id="edit-customer-input" placeholder="Type customer name..." autocomplete="off">
+          <div class="ac-dropdown" id="edit-customer-dropdown"></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Date</label>
+        <input class="ac-input" type="date" id="edit-order-date">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px;">
+      <label>Remark (optional)</label>
+      <input class="ac-input" id="edit-order-remark" placeholder="Any note...">
+    </div>
+    <div style="font-weight:600;font-size:14px;margin-bottom:10px;">SKUs</div>
+    <div class="form-row cols2" style="margin-bottom:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Search SKU</label>
+        <div class="ac-wrap">
+          <input class="ac-input" id="edit-sku-search" placeholder="Type SKU name..." autocomplete="off">
+          <div class="ac-dropdown" id="edit-sku-dropdown"></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Quantity</label>
+        <input class="ac-input" type="number" id="edit-sku-qty" placeholder="0" min="0" step="any">
+      </div>
+    </div>
+    <table class="sku-table" id="edit-sku-table" style="margin-bottom:12px;display:none;">
+      <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Quantity</th><th></th></tr></thead>
+      <tbody id="edit-sku-tbody"></tbody>
+    </table>
+    <div id="edit-sku-empty" style="font-size:13px;color:var(--text2);padding:8px 0;">No SKUs added yet.</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-edit-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-edit-save">💾 Save Changes</button>
     </div>
   </div>
 </div>
@@ -870,9 +918,12 @@ function openOrderView(order) {
       <span class="status-badge ${isCompleted ? 'status-completed' : 'status-pending'}">${isCompleted ? 'Completed' : 'Pending'}</span>
     </div>
   `;
-  const revertBtn = document.getElementById('modal-order-revert');
-  revertBtn.style.display = (isCompleted && CU.role === 'admin') ? 'inline-flex' : 'none';
-  document.getElementById('modal-order-delete').style.display = CU.role === 'admin' ? 'inline-flex' : 'none';
+  const isAdmin = CU.role === 'admin';
+  const canEdit = CU.role === 'admin' || CU.role === 'order_staff';
+  document.getElementById('modal-order-revert').style.display = (isCompleted && isAdmin) ? 'inline-flex' : 'none';
+  document.getElementById('modal-order-delete').style.display = isAdmin ? 'inline-flex' : 'none';
+  document.getElementById('modal-order-complete').style.display = (!isCompleted && isAdmin) ? 'inline-flex' : 'none';
+  document.getElementById('modal-order-edit').style.display = canEdit ? 'inline-flex' : 'none';
   openModal('modal-order-view');
 }
 
@@ -891,6 +942,16 @@ document.getElementById('modal-order-revert').onclick = async () => {
   await updateDoc(doc(db, 'order_entries', viewingOrderId), { status: 'pending' });
   closeModal('modal-order-view');
   toast('Order reverted to pending');
+};
+document.getElementById('modal-order-complete').onclick = async () => {
+  if(!confirm('Mark this order as Completed?')) return;
+  await updateDoc(doc(db, 'order_entries', viewingOrderId), { status: 'completed', completedAt: new Date().toISOString() });
+  closeModal('modal-order-view');
+  toast('Order marked as completed ✓');
+};
+document.getElementById('modal-order-edit').onclick = () => {
+  const order = [...pendingOrders, ...completedOrders].find(o => o.id === viewingOrderId);
+  if(order) { closeModal('modal-order-view'); setTimeout(() => openOrderEdit(order), 200); }
 };
 
 // ── SELECTION ────────────────────────────────────────────────────────────────
@@ -1641,6 +1702,147 @@ document.addEventListener('keydown', e => {
     }
   }
 });
+
+// ── EDIT ORDER ───────────────────────────────────────────────────────────────
+let editingOrder = null;
+let editOrderSkus = [];
+let editSelectedCustomer = null;
+let editSelectedSku = null;
+let editSkuHighlight = -1;
+
+function openOrderEdit(order) {
+  editingOrder = order;
+  editOrderSkus = JSON.parse(JSON.stringify(order.skus || []));
+  editSelectedCustomer = { id: order.customerId, name: order.customerName };
+
+  document.getElementById('edit-customer-input').value = order.customerName || '';
+  document.getElementById('edit-order-date').value = order.date || '';
+  document.getElementById('edit-order-remark').value = order.remark || '';
+  document.getElementById('edit-sku-search').value = '';
+  document.getElementById('edit-sku-qty').value = '';
+  editSelectedSku = null;
+  renderEditSkuTable();
+  openModal('modal-order-edit');
+  setTimeout(() => document.getElementById('edit-customer-input').focus(), 100);
+}
+
+function renderEditSkuTable() {
+  const tbody = document.getElementById('edit-sku-tbody');
+  const table = document.getElementById('edit-sku-table');
+  const empty = document.getElementById('edit-sku-empty');
+  if(!editOrderSkus.length) { table.style.display='none'; empty.style.display='block'; return; }
+  table.style.display = 'table';
+  empty.style.display = 'none';
+  tbody.innerHTML = '';
+  editOrderSkus.forEach((s,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--text2)">${i+1}</td>
+      <td>${s.name}</td>
+      <td class="sku-unit">${s.unit||''}</td>
+      <td><input class="qty-input" type="number" value="${s.qty}" min="0" step="any" data-idx="${i}"></td>
+      <td><button class="remove-btn" data-idx="${i}">×</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('.qty-input').forEach(inp => {
+    inp.onchange = () => { editOrderSkus[parseInt(inp.dataset.idx)].qty = parseFloat(inp.value)||0; };
+    inp.onkeydown = e => { if(e.key==='Enter') document.getElementById('edit-sku-search').focus(); };
+  });
+  tbody.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.onclick = () => { editOrderSkus.splice(parseInt(btn.dataset.idx),1); renderEditSkuTable(); };
+  });
+}
+
+// Edit customer autocomplete
+setupAutocomplete({
+  input: document.getElementById('edit-customer-input'),
+  dropdown: document.getElementById('edit-customer-dropdown'),
+  getItems: (q) => customers.filter(c => c.name.toLowerCase().includes(q.toLowerCase())),
+  renderItem: (c) => `<span>${c.name}</span>`,
+  onSelect: (c) => { editSelectedCustomer = c; document.getElementById('edit-customer-input').value = c.name; },
+  getLabel: (c) => c.name
+});
+
+// Edit SKU search
+const editSkuInput = document.getElementById('edit-sku-search');
+const editSkuDropdown = document.getElementById('edit-sku-dropdown');
+
+editSkuInput.addEventListener('input', () => {
+  const q = editSkuInput.value.trim().toLowerCase();
+  if(!q) { editSkuDropdown.classList.remove('open'); return; }
+  const filtered = skus.filter(s => {
+    const name = (s.name||'').toLowerCase();
+    const code = (s.code||String(s.id||'')).toLowerCase();
+    return name.includes(q) || code.includes(q);
+  }).slice(0,20);
+  editSkuDropdown.innerHTML = '';
+  if(!filtered.length) { editSkuDropdown.innerHTML='<div class="ac-empty">No SKUs found</div>'; editSkuDropdown.classList.add('open'); return; }
+  filtered.forEach((s,i) => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+    item.innerHTML = `<span>${s.name}</span><span class="ac-code">${s.unit||''}</span>`;
+    item.addEventListener('mousedown', e => e.preventDefault());
+    item.addEventListener('click', () => {
+      editSelectedSku = s;
+      editSkuInput.value = s.name;
+      editSkuDropdown.classList.remove('open');
+      document.getElementById('edit-sku-qty').focus();
+    });
+    editSkuDropdown.appendChild(item);
+  });
+  editSkuDropdown.classList.add('open');
+  editSkuHighlight = -1;
+});
+
+editSkuInput.addEventListener('keydown', e => {
+  const items = editSkuDropdown.querySelectorAll('.ac-item');
+  if(e.key==='ArrowDown'){e.preventDefault();editSkuHighlight=Math.min(editSkuHighlight+1,items.length-1);items.forEach((it,i)=>it.classList.toggle('highlighted',i===editSkuHighlight));}
+  else if(e.key==='ArrowUp'){e.preventDefault();editSkuHighlight=Math.max(editSkuHighlight-1,0);items.forEach((it,i)=>it.classList.toggle('highlighted',i===editSkuHighlight));}
+  else if(e.key==='Enter'){e.preventDefault();if(editSkuHighlight>=0&&items[editSkuHighlight])items[editSkuHighlight].click();else if(items.length===1)items[0].click();}
+  else if(e.key==='Escape'){editSkuDropdown.classList.remove('open');}
+});
+editSkuInput.addEventListener('blur', () => setTimeout(()=>editSkuDropdown.classList.remove('open'),150));
+
+document.getElementById('edit-sku-qty').addEventListener('keydown', e => {
+  if(e.key==='Enter'||e.key==='Tab') { e.preventDefault(); addEditSkuRow(); }
+  else if(e.key==='Escape') { editSelectedSku=null; editSkuInput.value=''; document.getElementById('edit-sku-qty').value=''; editSkuInput.focus(); }
+});
+
+function addEditSkuRow() {
+  if(!editSelectedSku) { toast('Select a SKU first','error'); editSkuInput.focus(); return; }
+  const qty = parseFloat(document.getElementById('edit-sku-qty').value);
+  if(!qty||qty<=0) { toast('Enter a valid quantity','error'); document.getElementById('edit-sku-qty').focus(); return; }
+  const existing = editOrderSkus.find(s => s.id === (editSelectedSku.id||editSelectedSku.name));
+  if(existing) { existing.qty += qty; toast(`Updated qty for ${editSelectedSku.name}`); }
+  else { editOrderSkus.push({ id: editSelectedSku.id||editSelectedSku.name, name: editSelectedSku.name, unit: editSelectedSku.unit||'', qty }); }
+  renderEditSkuTable();
+  editSelectedSku = null;
+  editSkuInput.value = '';
+  document.getElementById('edit-sku-qty').value = '';
+  editSkuInput.focus();
+}
+
+document.getElementById('modal-edit-cancel').onclick = () => closeModal('modal-order-edit');
+
+document.getElementById('modal-edit-save').onclick = async () => {
+  if(!editSelectedCustomer) { toast('Select a customer','error'); return; }
+  if(!editOrderSkus.length) { toast('Add at least one SKU','error'); return; }
+  const date = document.getElementById('edit-order-date').value;
+  const remark = document.getElementById('edit-order-remark').value.trim();
+  try {
+    await updateDoc(doc(db, 'order_entries', editingOrder.id), {
+      customerId: editSelectedCustomer.id,
+      customerName: editSelectedCustomer.name,
+      date, remark,
+      skus: editOrderSkus,
+      editedBy: CU.username,
+      editedAt: new Date().toISOString()
+    });
+    closeModal('modal-order-edit');
+    toast('Order updated ✓');
+  } catch(e) { toast('Error: '+e.message,'error'); }
+};
 
 // ── ADMIN ────────────────────────────────────────────────────────────────────
 function renderAdmin() {
