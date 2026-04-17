@@ -1739,21 +1739,89 @@ function renderEditSkuTable() {
   tbody.innerHTML = '';
   editOrderSkus.forEach((s,i) => {
     const tr = document.createElement('tr');
+    tr.dataset.idx = i;
     tr.innerHTML = `
-      <td style="color:var(--text2)">${i+1}</td>
-      <td>${s.name}</td>
-      <td class="sku-unit">${s.unit||''}</td>
+      <td style="color:var(--text2);font-family:var(--mono)">${i+1}</td>
+      <td>
+        <div class="inline-sku-wrap" style="position:relative;">
+          <div class="inline-sku-name" data-idx="${i}" style="cursor:pointer;padding:4px 8px;border-radius:4px;border:1px solid transparent;transition:border .15s;" title="Click to change SKU">
+            ${s.name}
+          </div>
+          <div class="inline-sku-editor" data-idx="${i}" style="display:none;position:relative;">
+            <input class="ac-input inline-sku-input" type="text" value="${s.name}" placeholder="Search SKU..." autocomplete="off" data-idx="${i}" style="font-size:13px;padding:6px 10px;">
+            <div class="ac-dropdown inline-sku-dropdown" data-idx="${i}"></div>
+          </div>
+        </div>
+      </td>
+      <td class="sku-unit" data-idx="${i}">${s.unit||''}</td>
       <td><input class="qty-input" type="number" value="${s.qty}" min="0" step="any" data-idx="${i}"></td>
       <td><button class="remove-btn" data-idx="${i}">×</button></td>
     `;
     tbody.appendChild(tr);
   });
+
+  // Wire qty inputs
   tbody.querySelectorAll('.qty-input').forEach(inp => {
     inp.onchange = () => { editOrderSkus[parseInt(inp.dataset.idx)].qty = parseFloat(inp.value)||0; };
     inp.onkeydown = e => { if(e.key==='Enter') document.getElementById('edit-sku-search').focus(); };
   });
+
+  // Wire remove buttons
   tbody.querySelectorAll('.remove-btn').forEach(btn => {
     btn.onclick = () => { editOrderSkus.splice(parseInt(btn.dataset.idx),1); renderEditSkuTable(); };
+  });
+
+  // Wire inline SKU name click to show editor
+  tbody.querySelectorAll('.inline-sku-name').forEach(nameEl => {
+    nameEl.onmouseenter = () => { nameEl.style.borderColor = 'var(--accent)'; nameEl.style.background = 'rgba(224,123,57,.06)'; };
+    nameEl.onmouseleave = () => { nameEl.style.borderColor = 'transparent'; nameEl.style.background = ''; };
+    nameEl.onclick = () => {
+      const idx = parseInt(nameEl.dataset.idx);
+      nameEl.style.display = 'none';
+      const editor = tbody.querySelector(`.inline-sku-editor[data-idx="${idx}"]`);
+      editor.style.display = 'block';
+      const input = editor.querySelector('.inline-sku-input');
+      input.value = editOrderSkus[idx].name;
+      input.focus();
+      input.select();
+      // Wire search on this inline input
+      input.oninput = () => {
+        const q = input.value.trim().toLowerCase();
+        const dropdown = editor.querySelector('.inline-sku-dropdown');
+        if(!q) { dropdown.classList.remove('open'); return; }
+        const filtered = skus.filter(s => (s.name||'').toLowerCase().includes(q) || (s.code||String(s.id||'')).toLowerCase().includes(q)).slice(0,15);
+        dropdown.innerHTML = '';
+        if(!filtered.length) { dropdown.innerHTML='<div class="ac-empty">No SKUs found</div>'; dropdown.classList.add('open'); return; }
+        filtered.forEach(sku => {
+          const item = document.createElement('div');
+          item.className = 'ac-item';
+          item.innerHTML = `<span>${sku.name}</span><span class="ac-code">${sku.unit||''}</span>`;
+          item.addEventListener('mousedown', e => e.preventDefault());
+          item.addEventListener('click', () => {
+            editOrderSkus[idx] = { ...editOrderSkus[idx], id: sku.id||sku.name, name: sku.name, unit: sku.unit||'' };
+            dropdown.classList.remove('open');
+            renderEditSkuTable();
+          });
+          dropdown.appendChild(item);
+        });
+        dropdown.classList.add('open');
+      };
+      input.onblur = () => {
+        setTimeout(() => {
+          const dropdown = editor.querySelector('.inline-sku-dropdown');
+          dropdown.classList.remove('open');
+          editor.style.display = 'none';
+          nameEl.style.display = 'block';
+        }, 200);
+      };
+      input.onkeydown = e => {
+        const dropdown = editor.querySelector('.inline-sku-dropdown');
+        const items = dropdown.querySelectorAll('.ac-item');
+        if(e.key==='Escape') { input.blur(); }
+        else if(e.key==='Enter' && items.length===1) { items[0].click(); }
+        else if(e.key==='ArrowDown') { e.preventDefault(); items[0]?.classList.add('highlighted'); items[0]?.scrollIntoView({block:'nearest'}); }
+      };
+    };
   });
 }
 
