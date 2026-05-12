@@ -407,15 +407,15 @@ input,select,textarea{font-family:var(--sans);}
         <input class="filter-input" id="search-completed" placeholder="Search by customer..." style="flex:1;min-width:180px;">
         <input class="filter-input" type="date" id="filter-completed-date">
         <button class="btn btn-secondary btn-sm" id="clear-completed-filter-btn">Clear</button>
-        <button class="btn btn-secondary btn-sm" id="bulk-select-toggle-btn" style="display:none;" onclick="toggleBulkSelect()">☑ Select</button>
+        <button class="btn btn-secondary btn-sm" id="bulk-select-toggle-btn" style="display:none;" onclick="window.toggleBulkSelect()">☑ Select</button>
       </div>
       <div id="completed-orders-list" class="order-list"></div>
       <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
         <span id="bulk-count-label">0 selected</span>
-        <button class="btn btn-secondary btn-sm" onclick="bulkSelectAll()">Select All</button>
-        <button class="btn btn-secondary btn-sm" onclick="bulkSelectNone()">None</button>
-        <button class="btn btn-danger btn-sm" onclick="bulkDeleteSelected()">🗑 Delete Selected</button>
-        <button class="btn btn-secondary btn-sm" onclick="toggleBulkSelect()">Cancel</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.bulkSelectAll()">Select All</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.bulkSelectNone()">None</button>
+        <button class="btn btn-danger btn-sm" onclick="window.bulkDeleteSelected()">🗑 Delete Selected</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.toggleBulkSelect()">Cancel</button>
       </div>
     </div>
   </div>
@@ -902,6 +902,7 @@ function toggleBulkSelect() {
   updateBulkCountLabel();
   renderCompletedOrders();
 }
+window.toggleBulkSelect = toggleBulkSelect;
 
 function updateBulkCountLabel() {
   document.getElementById('bulk-count-label').textContent = `${bulkSelectedIds.size} selected`;
@@ -911,22 +912,24 @@ function toggleBulkCheck(id) {
   if(bulkSelectedIds.has(id)) bulkSelectedIds.delete(id);
   else bulkSelectedIds.add(id);
   updateBulkCountLabel();
-  // update card highlight without full re-render
   const card = document.getElementById('bulk-card-' + id);
   if(card) card.className = 'order-card completed' + (bulkSelectedIds.has(id) ? ' bulk-checked' : '');
 }
+window.toggleBulkCheck = toggleBulkCheck;
 
 function bulkSelectAll() {
   bulkFilteredOrders.forEach(o => bulkSelectedIds.add(o.id));
   updateBulkCountLabel();
   renderCompletedOrders();
 }
+window.bulkSelectAll = bulkSelectAll;
 
 function bulkSelectNone() {
   bulkSelectedIds.clear();
   updateBulkCountLabel();
   renderCompletedOrders();
 }
+window.bulkSelectNone = bulkSelectNone;
 
 async function bulkDeleteSelected() {
   if(!bulkSelectedIds.size) { toast('No orders selected'); return; }
@@ -943,6 +946,7 @@ async function bulkDeleteSelected() {
     toast('Delete failed — check connection');
   }
 }
+window.bulkDeleteSelected = bulkDeleteSelected;
 
 function renderCompletedOrders() {
   const list = document.getElementById('completed-orders-list');
@@ -967,7 +971,7 @@ function renderCompletedOrders() {
     if(bulkSelectMode) {
       card.style.cursor = 'pointer';
       card.innerHTML = `
-        <input type="checkbox" class="order-check" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();toggleBulkCheck('${order.id}')">
+        <input type="checkbox" class="order-check" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();window.toggleBulkCheck('${order.id}')">
         <div class="order-info">
           <div class="order-customer">${order.customerName || 'Unknown'}</div>
           <div class="order-meta">${order.date || ''} ${order.remark ? '· '+order.remark : ''}</div>
