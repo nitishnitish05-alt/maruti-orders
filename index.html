@@ -1262,9 +1262,22 @@ async function loadProductionDashboard() {
       const openingDoc = await getDoc(doc(db, 'stock_config', 'opening'));
       if(openingDoc.exists()) {
         const data = openingDoc.data().data || {};
-        Object.entries(data).forEach(([skuId, qty]) => {
+        // Keys stored as 'YYYY-MM-DD_skuId' - pick latest date entry per SKU
+        const latestBySkuId = {};
+        Object.entries(data).forEach(([key, qty]) => {
+          const idx = key.indexOf('_');
+          if(idx > 0) {
+            const date = key.substring(0, idx);
+            const skuId = key.substring(idx + 1);
+            if(!latestBySkuId[skuId] || date > latestBySkuId[skuId].date)
+              latestBySkuId[skuId] = { date, qty: Number(qty)||0 };
+          } else {
+            if(!latestBySkuId[key]) latestBySkuId[key] = { date:'', qty: Number(qty)||0 };
+          }
+        });
+        Object.entries(latestBySkuId).forEach(([skuId, { qty }]) => {
           const sku = skus.find(s => String(s.id) === String(skuId));
-          if(sku) closingStockMap[sku.name] = { closing: Number(qty)||0 };
+          if(sku) closingStockMap[sku.name] = { closing: qty };
         });
       }
     } catch(e) {
