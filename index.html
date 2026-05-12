@@ -121,6 +121,11 @@ input,select,textarea{font-family:var(--sans);}
 .order-card.selected{border-color:var(--accent);background:rgba(244,162,97,.05);}
 .order-card.completed{opacity:.6;cursor:default;}
 .order-card.completed:hover{border-color:var(--border);}
+.order-card.bulk-checked{opacity:1;border-color:var(--accent);background:rgba(244,162,97,.07);}
+.bulk-action-bar{position:sticky;bottom:16px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:10px 14px;margin-top:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);}
+.bulk-action-bar span{flex:1;font-size:13px;font-weight:600;color:var(--accent);}
+.btn-danger{background:#e63946;color:#fff;border:none;}
+.btn-danger:hover{background:#c1121f;}
 .order-check{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0;}
 .order-info{flex:1;}
 .order-customer{font-size:15px;font-weight:600;}
@@ -402,8 +407,16 @@ input,select,textarea{font-family:var(--sans);}
         <input class="filter-input" id="search-completed" placeholder="Search by customer..." style="flex:1;min-width:180px;">
         <input class="filter-input" type="date" id="filter-completed-date">
         <button class="btn btn-secondary btn-sm" id="clear-completed-filter-btn">Clear</button>
+        <button class="btn btn-secondary btn-sm" id="bulk-select-toggle-btn" style="display:none;" onclick="toggleBulkSelect()">☑ Select</button>
       </div>
       <div id="completed-orders-list" class="order-list"></div>
+      <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
+        <span id="bulk-count-label">0 selected</span>
+        <button class="btn btn-secondary btn-sm" onclick="bulkSelectAll()">Select All</button>
+        <button class="btn btn-secondary btn-sm" onclick="bulkSelectNone()">None</button>
+        <button class="btn btn-danger btn-sm" onclick="bulkDeleteSelected()">🗑 Delete Selected</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleBulkSelect()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -733,6 +746,9 @@ function buildNav() {
   if(role === 'admin' || role === 'order_staff') {
     pages.push({ id:'page-admin', label:'Customers' });
   }
+  // Show bulk select button on completed tab for admin only
+  const bulkBtn = document.getElementById('bulk-select-toggle-btn');
+  if(bulkBtn) bulkBtn.style.display = (role === 'admin') ? 'inline-flex' : 'none';
   pages.forEach(p => {
     const btn = document.createElement('button');
     btn.className = 'nav-btn';
@@ -871,6 +887,63 @@ function renderPendingOrders() {
   });
 }
 
+// --- BULK DELETE STATE ---
+let bulkSelectMode = false;
+let bulkSelectedIds = new Set();
+let bulkFilteredOrders = []; // tracks currently visible orders for Select All
+
+function toggleBulkSelect() {
+  bulkSelectMode = !bulkSelectMode;
+  bulkSelectedIds.clear();
+  const bar = document.getElementById('bulk-action-bar');
+  const btn = document.getElementById('bulk-select-toggle-btn');
+  bar.style.display = bulkSelectMode ? 'flex' : 'none';
+  btn.textContent = bulkSelectMode ? '✕ Cancel' : '☑ Select';
+  updateBulkCountLabel();
+  renderCompletedOrders();
+}
+
+function updateBulkCountLabel() {
+  document.getElementById('bulk-count-label').textContent = `${bulkSelectedIds.size} selected`;
+}
+
+function toggleBulkCheck(id) {
+  if(bulkSelectedIds.has(id)) bulkSelectedIds.delete(id);
+  else bulkSelectedIds.add(id);
+  updateBulkCountLabel();
+  // update card highlight without full re-render
+  const card = document.getElementById('bulk-card-' + id);
+  if(card) card.className = 'order-card completed' + (bulkSelectedIds.has(id) ? ' bulk-checked' : '');
+}
+
+function bulkSelectAll() {
+  bulkFilteredOrders.forEach(o => bulkSelectedIds.add(o.id));
+  updateBulkCountLabel();
+  renderCompletedOrders();
+}
+
+function bulkSelectNone() {
+  bulkSelectedIds.clear();
+  updateBulkCountLabel();
+  renderCompletedOrders();
+}
+
+async function bulkDeleteSelected() {
+  if(!bulkSelectedIds.size) { toast('No orders selected'); return; }
+  if(!confirm(`Permanently delete ${bulkSelectedIds.size} completed order(s)? This cannot be undone.`)) return;
+  const ids = [...bulkSelectedIds];
+  try {
+    await Promise.all(ids.map(id => deleteDoc(doc(db, 'order_entries', id))));
+    completedOrders = completedOrders.filter(o => !ids.includes(o.id));
+    bulkSelectedIds.clear();
+    toast(`Deleted ${ids.length} order(s) ✓`);
+    toggleBulkSelect(); // exit select mode
+  } catch(e) {
+    console.error('Bulk delete error', e);
+    toast('Delete failed — check connection');
+  }
+}
+
 function renderCompletedOrders() {
   const list = document.getElementById('completed-orders-list');
   const search = document.getElementById('search-completed').value.toLowerCase();
@@ -880,6 +953,7 @@ function renderCompletedOrders() {
     const matchDate = !date || (o.date||'') === date;
     return matchName && matchDate;
   });
+  bulkFilteredOrders = orders;
   if(!orders.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">No completed orders</div></div>`;
     return;
@@ -887,21 +961,37 @@ function renderCompletedOrders() {
   list.innerHTML = '';
   orders.forEach(order => {
     const card = document.createElement('div');
-    card.className = 'order-card completed';
-    card.innerHTML = `
-      <div class="order-info">
-        <div class="order-customer">${order.customerName || 'Unknown'}</div>
-        <div class="order-meta">${order.date || ''} ${order.remark ? '· '+order.remark : ''}</div>
-        <div class="order-skus">${(order.skus||[]).map(s => `<span class="sku-chip">${s.name} <span>×${s.qty}</span></span>`).join('')}</div>
-      </div>
-      <div class="order-actions">
-        <span class="status-badge status-completed">Completed</span>
-        <button class="btn btn-secondary btn-sm" onclick="window._viewOrder('${order.id}')">View</button>
-      </div>
-    `;
+    const isChecked = bulkSelectedIds.has(order.id);
+    card.id = 'bulk-card-' + order.id;
+    card.className = 'order-card completed' + (isChecked ? ' bulk-checked' : '');
+    if(bulkSelectMode) {
+      card.style.cursor = 'pointer';
+      card.innerHTML = `
+        <input type="checkbox" class="order-check" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();toggleBulkCheck('${order.id}')">
+        <div class="order-info">
+          <div class="order-customer">${order.customerName || 'Unknown'}</div>
+          <div class="order-meta">${order.date || ''} ${order.remark ? '· '+order.remark : ''}</div>
+          <div class="order-skus">${(order.skus||[]).map(s => `<span class="sku-chip">${s.name} <span>×${s.qty}</span></span>`).join('')}</div>
+        </div>
+      `;
+      card.addEventListener('click', () => toggleBulkCheck(order.id));
+    } else {
+      card.innerHTML = `
+        <div class="order-info">
+          <div class="order-customer">${order.customerName || 'Unknown'}</div>
+          <div class="order-meta">${order.date || ''} ${order.remark ? '· '+order.remark : ''}</div>
+          <div class="order-skus">${(order.skus||[]).map(s => `<span class="sku-chip">${s.name} <span>×${s.qty}</span></span>`).join('')}</div>
+        </div>
+        <div class="order-actions">
+          <span class="status-badge status-completed">Completed</span>
+          <button class="btn btn-secondary btn-sm" onclick="window._viewOrder('${order.id}')">View</button>
+        </div>
+      `;
+    }
     list.appendChild(card);
   });
 }
+
 
 window._viewOrder = (id) => {
   const order = [...pendingOrders, ...completedOrders].find(o => o.id === id);
@@ -1168,23 +1258,9 @@ async function loadProductionDashboard() {
       const openingDoc = await getDoc(doc(db, 'stock_config', 'opening'));
       if(openingDoc.exists()) {
         const data = openingDoc.data().data || {};
-        // Keys are stored as "YYYY-MM-DD_skuId" — pick latest date entry per SKU
-        const latestBySkuId = {};
-        Object.entries(data).forEach(([key, qty]) => {
-          const idx = key.indexOf('_');
-          if(idx > 0) {
-            const date = key.substring(0, idx);
-            const skuId = key.substring(idx + 1);
-            if(!latestBySkuId[skuId] || date > latestBySkuId[skuId].date)
-              latestBySkuId[skuId] = { date, qty: Number(qty)||0 };
-          } else {
-            // fallback: key is plain skuId (old format)
-            if(!latestBySkuId[key]) latestBySkuId[key] = { date:'', qty: Number(qty)||0 };
-          }
-        });
-        Object.entries(latestBySkuId).forEach(([skuId, { qty }]) => {
+        Object.entries(data).forEach(([skuId, qty]) => {
           const sku = skus.find(s => String(s.id) === String(skuId));
-          if(sku) closingStockMap[sku.name] = { closing: qty };
+          if(sku) closingStockMap[sku.name] = { closing: Number(qty)||0 };
         });
       }
     } catch(e) {
