@@ -439,7 +439,10 @@ input,select,textarea{font-family:var(--sans);}
   <div class="page" id="page-production">
     <div class="page-header">
       <div class="page-title">Production <span>Dashboard</span></div>
-      <button class="btn btn-secondary btn-sm" id="refresh-prod-btn">↻ Refresh</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" id="print-prod-btn">🖨 Print</button>
+        <button class="btn btn-secondary btn-sm" id="refresh-prod-btn">↻ Refresh</button>
+      </div>
     </div>
     <div class="tabs">
       <button class="tab-btn active" id="prod-tab-btn-selected" onclick="window.switchProdTab('selected')">Selected Orders</button>
@@ -1402,7 +1405,108 @@ function refreshProdDashboard() {
 }
 window.refreshProdDashboard = refreshProdDashboard;
 
+function printProdDashboard() {
+  const rows = window._prodRows || [];
+  const hasStock = window._prodHasStock || false;
+  const orderInfo = window._prodOrderInfo || '';
+  if(!rows.length) { toast('No data to print'); return; }
+
+  const group = document.getElementById('prod-group')?.value || 'none';
+  const sort  = document.getElementById('prod-sort')?.value  || 'demand_desc';
+  const tabLabel = document.getElementById('prod-tab-btn-all')?.classList.contains('active')
+    ? 'All Pending Orders' : 'Selected Orders';
+
+  // Re-sort same way as renderProdTable
+  let sorted = [...rows].sort((a,b) => {
+    if(sort==='demand_desc') return b.demand - a.demand;
+    if(sort==='demand_asc')  return a.demand - b.demand;
+    if(sort==='alpha')       return a.name.localeCompare(b.name);
+    if(sort==='alpha_desc')  return b.name.localeCompare(a.name);
+    return 0;
+  });
+
+  let totalBoxDemand=0,totalBagDemand=0,totalBoxProd=0,totalBagProd=0;
+  rows.forEach(r => {
+    const u=(r.unit||'').toLowerCase();
+    if(u==='box'){totalBoxDemand+=r.demand;if(r.shortfall>0)totalBoxProd+=r.shortfall;}
+    else if(u==='bag'){totalBagDemand+=r.demand;if(r.shortfall>0)totalBagProd+=r.shortfall;}
+  });
+
+  function rowsHtml(list, startIdx=0) {
+    return list.map((r,i) => {
+      const needs = r.shortfall!==null && r.shortfall>0;
+      const toProdCell = r.shortfall===null ? '&mdash;'
+        : needs ? 'Need: '+r.shortfall
+        : 'OK'+(Math.abs(r.shortfall)>0?' ('+Math.abs(r.shortfall)+' surplus)':'');
+      const rowStyle = needs ? 'background:#fff0f0;' : '';
+      const prodStyle = r.shortfall===null?'color:#888;' : needs?'color:#d63031;font-weight:700;' : 'color:#27ae60;font-weight:700;';
+      return `<tr style="${rowStyle}">
+        <td style="color:#888;font-family:monospace;">${startIdx+i+1}</td>
+        <td style="font-weight:500;">${r.name}</td>
+        <td style="color:#888;font-size:11px;">${r.unit}</td>
+        <td style="text-align:right;font-weight:700;">${r.demand}</td>
+        <td style="text-align:right;color:#555;">${r.closing===null?'&mdash;':r.closing}</td>
+        <td style="text-align:right;${prodStyle}">${toProdCell}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  let tbody = '';
+  if(group==='unit') {
+    const boxes  = sorted.filter(r=>( r.unit||'').toLowerCase()==='box');
+    const bags   = sorted.filter(r=>( r.unit||'').toLowerCase()==='bag');
+    const others = sorted.filter(r=>!['box','bag'].includes((r.unit||'').toLowerCase()));
+    const gh = lbl => `<tr><td colspan="6" style="background:#f5f5f5;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;color:#555;">${lbl}</td></tr>`;
+    if(boxes.length)  tbody += gh('Box ('+boxes.length+' SKUs)')+rowsHtml(boxes);
+    if(bags.length)   tbody += gh('Bag ('+bags.length+' SKUs)')+rowsHtml(bags,boxes.length);
+    if(others.length) tbody += gh('Other')+rowsHtml(others,boxes.length+bags.length);
+  } else {
+    tbody = rowsHtml(sorted);
+  }
+
+  const totalsHtml = `<tr style="background:#f5f5f5;font-weight:700;border-top:2px solid #ddd;">
+    <td colspan="2" style="padding:8px 12px;font-size:13px;">TOTAL</td>
+    <td></td>
+    <td style="text-align:right;font-size:14px;">${totalBoxDemand>0?'<div>Boxes: '+totalBoxDemand+' Box</div>':''}${totalBagDemand>0?'<div>Bags: '+totalBagDemand+' Bag</div>':''}</td>
+    <td></td>
+    <td style="text-align:right;color:#d63031;font-size:13px;">${hasStock?(totalBoxProd>0?'<div>Need: '+totalBoxProd+' Box</div>':'')+(totalBagProd>0?'<div>Need: '+totalBagProd+' Bag</div>':''):'&mdash;'}</td>
+  </tr>`;
+
+  const printDate = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Production Report &mdash; ${printDate}</title>
+  <style>
+    @page { margin:1.2cm; }
+    body { font-family: Arial, sans-serif; font-size:13px; color:#222; margin:0; }
+    h2 { margin:0 0 2px; font-size:17px; }
+    .sub { font-size:11px; color:#666; margin-bottom:4px; }
+    .orders-info { font-size:11px; color:#555; margin-bottom:14px; }
+    table { width:100%; border-collapse:collapse; }
+    th { background:#f0f0f0; font-size:11px; text-transform:uppercase; letter-spacing:.4px; padding:7px 10px; text-align:left; border-bottom:2px solid #ccc; }
+    th:nth-child(4),th:nth-child(5),th:nth-child(6){ text-align:right; }
+    td { padding:6px 10px; border-bottom:1px solid #eee; vertical-align:middle; }
+    .warn { margin-top:10px; font-size:11px; color:#888; }
+  </style></head><body>
+  <h2>Maruti Namkeen &mdash; Production Report</h2>
+  <div class="sub">${tabLabel} &nbsp;|&nbsp; ${printDate}</div>
+  <div class="orders-info">${orderInfo}</div>
+  <table>
+    <thead><tr><th>#</th><th>SKU Name</th><th>Unit</th><th>Demand</th><th>Opening Stock</th><th>To Produce</th></tr></thead>
+    <tbody>${tbody}${totalsHtml}</tbody>
+  </table>
+  ${!hasStock?'<div class="warn">&#9888; Opening stock not set &mdash; shortfall column not available.</div>':''}
+  </body></html>`;
+
+  const frame = document.getElementById('print-frame');
+  frame.contentDocument.open();
+  frame.contentDocument.write(html);
+  frame.contentDocument.close();
+  setTimeout(() => frame.contentWindow.print(), 350);
+}
+
 document.getElementById('refresh-prod-btn').onclick = loadProductionDashboard;
+document.getElementById('print-prod-btn').onclick = printProdDashboard;
 
 // ── NEW ORDER FORM ────────────────────────────────────────────────────────────
 let selectedCustomer = null;
