@@ -1259,32 +1259,54 @@ async function loadProductionDashboard() {
       });
     });
 
-    // Get closing stock from stock_config opening document
+    // Get current stock = yesterday-closing snapshot (published by Loading App)
+    // + today's delta (production − dispatches since the anchor). Anchor is a
+    // complete past day, delta covers strictly-after dates → no double counting.
     const closingStockMap = {};
+    let _stockNote = '';
     try {
-      const openingDoc = await getDoc(doc(db, 'stock_config', 'opening'));
-      if(openingDoc.exists()) {
-        const data = openingDoc.data().data || {};
-        // Keys stored as 'YYYY-MM-DD_skuId' - pick latest date entry per SKU
-        const latestBySkuId = {};
-        Object.entries(data).forEach(([key, qty]) => {
-          const idx = key.indexOf('_');
-          if(idx > 0) {
-            const date = key.substring(0, idx);
-            const skuId = key.substring(idx + 1);
-            if(!latestBySkuId[skuId] || date > latestBySkuId[skuId].date)
-              latestBySkuId[skuId] = { date, qty: Number(qty)||0 };
-          } else {
-            if(!latestBySkuId[key]) latestBySkuId[key] = { date:'', qty: Number(qty)||0 };
-          }
+      const snapDoc = await getDoc(doc(db, 'stock_config', 'latest_closing'));
+      if(snapDoc.exists()) {
+        const snap = snapDoc.data();
+        const anchorDate = snap.date;               // e.g. yesterday, IST
+        const anchorStock = snap.stock || {};       // { skuId: closingQty }
+        const byId = {};
+        Object.entries(anchorStock).forEach(([id, qty]) => { byId[String(id)] = Number(qty)||0; });
+        // Delta: everything strictly AFTER the anchor day
+        const [sessSnap, prodSnap] = await Promise.all([
+          getDocs(query(collection(db, 'sessions'), where('date', '>', anchorDate))),
+          getDocs(query(collection(db, 'prod_entries'), where('date', '>', anchorDate)))
+        ]);
+        prodSnap.docs.forEach(d => {
+          const e = d.data();
+          (e.items||[]).forEach(it => {
+            const k = String(it.skuId);
+            byId[k] = (byId[k]||0) + (Number(it.qty)||0);
+          });
         });
-        Object.entries(latestBySkuId).forEach(([skuId, { qty }]) => {
+        sessSnap.docs.forEach(d => {
+          const sess = d.data();
+          if(!sess.done) return; // only completed dispatches count, matching Loading's ledger
+          (sess.rowData||[]).forEach(row => {
+            (row.entries||[]).forEach(en => {
+              if(!en.skuId || !en.qty) return;
+              const k = String(en.skuId);
+              byId[k] = (byId[k]||0) - (Number(en.qty)||0);
+            });
+          });
+        });
+        // Translate to names for the existing row-builder (names are the shared SKU names)
+        Object.entries(byId).forEach(([skuId, qty]) => {
           const sku = skus.find(s => String(s.id) === String(skuId));
           if(sku) closingStockMap[sku.name] = { closing: qty };
         });
+        _stockNote = ' \u00b7 Stock as of ' + anchorDate + ' + today';
+      } else {
+        _stockNote = ' \u00b7 \u26a0\ufe0f No stock snapshot yet \u2014 open Stock Ledger once in Loading App (admin)';
       }
     } catch(e) {
       console.error('stock load error', e);
+      _stockNote = ' \u00b7 \u26a0\ufe0f Stock load failed';
     }
 
     const hasStock = Object.keys(closingStockMap).length > 0;
@@ -1311,7 +1333,7 @@ async function loadProductionDashboard() {
     // Store rows for re-sorting
     window._prodRows = rows;
     window._prodHasStock = hasStock;
-    window._prodOrderInfo = `${orderCount} order${orderCount!==1?'s':''} — ${orderNames}`;
+    window._prodOrderInfo = `${orderCount} order${orderCount!==1?'s':''} — ${orderNames}`+_stockNote;
     renderProdTable();
   } catch(e) {
     container.innerHTML = `<div class="empty"><div class="empty-text">Error loading data</div><div class="empty-sub">${e.message}</div></div>`;
